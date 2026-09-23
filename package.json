@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
+  "private": true,
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -14,7 +15,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
-  "keywords": ["screenshots", "electron"],
+  "keywords": [
+    "screenshots",
+    "electron"
+  ],
   "license": "MIT",
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1"
