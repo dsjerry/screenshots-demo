@@ -1,10 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  ClipboardItem,
-  dialog,
-} from 'electron';
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { toBlob } from '../shared/bytes';
@@ -63,7 +57,9 @@ export function createPinWindow(bounds: Rect): BrowserWindow {
   win.setAlwaysOnTop(true, 'floating');
   forwardRendererLogs(win, 'pin');
   win.webContents.on('render-process-gone', (_e, details) => {
-    console.error(`[pin-window] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`);
+    console.error(
+      `[pin-window] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`,
+    );
   });
   win.on('unresponsive', () => console.warn('[pin-window] 窗口无响应'));
   win.on('closed', () => {
@@ -83,12 +79,17 @@ export async function loadPin(win: BrowserWindow): Promise<void> {
   }
 }
 
-
-
-
 export async function copyPng(png: Uint8Array): Promise<void> {
   if (png.byteLength === 0) throw new Error('图片数据为空');
-  await clipboard.write([new ClipboardItem({ 'image/png': toBlob(png, 'image/png') })]);
+  await clipboard.write([
+    new ClipboardItem({ 'image/png': toBlob(png, 'image/png') }),
+  ]);
+}
+
+/** 写入剪贴板文本（放大镜的复制颜色值）。 */
+export async function copyText(text: string): Promise<void> {
+  if (!text) throw new Error('文本为空');
+  clipboard.writeText(text);
 }
 
 export async function savePng(

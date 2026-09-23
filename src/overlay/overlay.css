@@ -24,7 +24,9 @@ body {
   top: 0;
   left: 0;
   z-index: 10;
-  width: 100px;
+  /* 尺寸来源是 overlay.ts 的 MAG_W / MAG_H，经 --mag-* 下发；
+     fallback 只在脚本执行前生效 */
+  width: var(--mag-w, 180px);
   /* 不能吃事件，否则会挡住底下的画布 */
   pointer-events: none;
   overflow: hidden;
@@ -40,21 +42,36 @@ body {
 
 .magnifier canvas {
   display: block;
-  width: 100px;
-  height: 72px;
+  width: var(--mag-w, 180px);
+  height: var(--mag-h, 135px);
 }
 
 .magnifier-foot {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  /* 两行信息：坐标一行、颜色一行。RGB 格式（`RGB: 170, 187, 204`）约 94px，
+     与坐标并排放不进 180px 的宽度；行高固定后容器高度才稳定 */
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   padding: 4px 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 11px;
   line-height: 1.2;
   color: #d7dade;
   white-space: nowrap;
+}
+
+/* 快捷键提示：压在颜色值下面，弱化处理，与信息行区分 */
+.magnifier-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(215, 218, 222, 0.62);
 }
 
 /* ---------------- 选区下方的浮动工具条 ----------------

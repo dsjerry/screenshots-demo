@@ -23,6 +23,10 @@ export const CH = {
   overlayCompose: 'overlay:compose',
   /** 遮罩 -> 主：合成好的 PNG，交给主进程进剪贴板 / 存盘 */
   overlayExport: 'overlay:export',
+  /** 光标所在屏的遮罩请求前台 —— 保证键盘事件归正确的窗口 */
+  overlayFocus: 'overlay:focus',
+  /** 写入剪贴板文本（放大镜复制颜色值） */
+  overlayCopyText: 'overlay:copyText',
   /** 遮罩把本屏标注（本屏 DIP）回传给主进程，确认时统一换算 */
   overlayShapes: 'overlay:shapes',
   /** 文字输入框开合 —— 打字时主进程别把 Enter/Esc 吃掉 */

@@ -21,6 +21,8 @@ const api: ScreenshotsApi = {
     action: (payload) => ipcRenderer.invoke(CH.overlayAction, payload),
     shapes: (payload) => ipcRenderer.invoke(CH.overlayShapes, payload),
     editState: (payload) => ipcRenderer.invoke(CH.overlayEditState, payload),
+    focus: () => ipcRenderer.invoke(CH.overlayFocus),
+    copyText: (payload) => ipcRenderer.invoke(CH.overlayCopyText, payload),
     compose: (cb) => on(CH.overlayCompose, cb),
     export: (payload) => ipcRenderer.invoke(CH.overlayExport, payload),
   },

@@ -24,11 +24,7 @@ import {
   ownsPendingPin,
   setSnipHooks,
 } from './snip-session';
-import {
-  copyPng,
-  defaultSnipName,
-  savePng,
-} from './pin-window';
+import { copyPng, copyText, defaultSnipName, savePng } from './pin-window';
 
 export interface AppContext {
   isMainWindow(win: BrowserWindow): boolean;
@@ -70,6 +66,28 @@ export function registerIpc(ctx: AppContext): void {
     (event, payload: { textEditing: boolean }) =>
       onOverlayEditState(event.sender, payload.textEditing),
   );
+  // 光标所在屏的遮罩请求前台：没有焦点的话，Ctrl+Z / C 等键盘事件会打到上一块屏的窗口
+  ipcMain.handle(CH.overlayFocus, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && win.isVisible()) win.focus();
+  });
+
+  // 放大镜复制颜色值
+  ipcMain.handle(
+    CH.overlayCopyText,
+    async (_event, payload: { text: string }) => {
+      try {
+        await copyText(payload.text);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
   // 遮罩就地合成好的 PNG：进剪贴板 / 存盘，随后结束截图
   ipcMain.handle(
     CH.overlayExport,
@@ -78,12 +96,13 @@ export function registerIpc(ctx: AppContext): void {
   );
 
   // ---------------------------------------------------------- 钉图窗口
-  ipcMain.handle(CH.pinBoot, (event): PinInitPayload | null => onPinBoot(event.sender));
+  ipcMain.handle(CH.pinBoot, (event): PinInitPayload | null =>
+    onPinBoot(event.sender),
+  );
 
   ipcMain.handle(CH.pinReady, (event) => {
     if (ownsPendingPin(event.sender)) markPinReady(event.sender);
   });
-
 
   ipcMain.handle(CH.pinAction, async (event, payload: PinAction) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -95,7 +114,11 @@ export function registerIpc(ctx: AppContext): void {
           await copyPng(payload.png);
           return { ok: true };
         case 'save':
-          await savePng(win, payload.png, payload.suggestedName || defaultSnipName());
+          await savePng(
+            win,
+            payload.png,
+            payload.suggestedName || defaultSnipName(),
+          );
           return { ok: true };
         case 'close':
           win.close();
@@ -105,7 +128,10 @@ export function registerIpc(ctx: AppContext): void {
       }
     } catch (err) {
       console.error('[pin] 操作失败', err);
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   });
 }

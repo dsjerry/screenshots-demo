@@ -29,9 +29,16 @@ export interface ScreenshotsApi {
     shapes(payload: { shapes: Shape[] }): Promise<void>;
     /** 文字输入框开合，主进程据此决定要不要接管 Enter / Esc */
     editState(payload: { textEditing: boolean }): Promise<void>;
+    /** 把本遮罩提到前台（光标移到哪块屏，键盘事件就归哪块屏） */
+    focus(): Promise<void>;
+    /** 写入剪贴板文本（放大镜的复制颜色值） */
+    copyText(payload: { text: string }): Promise<PinActionResult>;
     /** 主进程推来合成数据（复制 / 保存），宿主遮罩就地拼图导出 */
     compose(
-      cb: (payload: { kind: 'copy' | 'save'; data: OverlayComposePayload }) => void,
+      cb: (payload: {
+        kind: 'copy' | 'save';
+        data: OverlayComposePayload;
+      }) => void,
     ): () => void;
     /** 合成好的 PNG：交主进程进剪贴板 / 存盘，随后结束截图 */
     export(payload: {

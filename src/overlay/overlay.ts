@@ -20,7 +20,9 @@ const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
 
 const toolbarEl = document.getElementById('toolbar') as HTMLDivElement;
-const textEditorEl = document.getElementById('text-editor') as HTMLTextAreaElement;
+const textEditorEl = document.getElementById(
+  'text-editor',
+) as HTMLTextAreaElement;
 
 let shot: DisplayShot | null = null;
 let payload: OverlaySelectionPayload | null = null;
@@ -33,6 +35,8 @@ let editor: Editor | null = null;
 let toolbarW = 0;
 let toolbarH = 0;
 let lastPointer: Point | null = null;
+/** 前台切换请求进行中 —— 避免 pointermove 连发导致重复 invoke */
+let focusRequesting = false;
 
 function resize(): void {
   if (!shot) return;
@@ -138,8 +142,33 @@ window.addEventListener('resize', () => {
 window.addEventListener('pointermove', (event) => {
   const p = { x: event.clientX, y: event.clientY };
   lastPointer = p;
+
+  // 光标移到哪块屏，键盘事件就该归哪块屏。遮罩的焦点不会自动跟着光标走 ——
+  // 光标跨屏且中间没点过时，焦点还留在上一块屏，此时按 C / Ctrl+Z 会作用到
+  // 错误的窗口（复制到旧颜色、撤销掉别的屏的标注）。本窗口收到 pointermove
+  // 却没有焦点，就是这种状态，请求主进程把自己切到前台。
+  if (!document.hasFocus() && !focusRequesting) {
+    focusRequesting = true;
+    void window.api.overlay.focus().finally(() => {
+      focusRequesting = false;
+    });
+  }
+
   updateCursor(p);
   updateMagnifier(p);
+});
+
+/**
+ * 指针离开本窗口（移到别的屏幕 / 别的窗口）时收起放大镜。
+ *
+ * 放大镜只在 `pointermove` 里更新，光标一旦离开本屏就再也不会触发它 ——
+ * 不主动隐藏就会停在原处，而目标屏幕上又会新起一个，出现两个放大镜。
+ *
+ * `relatedTarget === null` 才表示指针离开窗口；窗口内部元素之间移动时
+ * 它指向目标元素，那种情况不该收起。
+ */
+window.addEventListener('pointerout', (event) => {
+  if (!event.relatedTarget) magEl.hidden = true;
 });
 
 function updateCursor(p: Point): void {
@@ -208,8 +237,7 @@ function syncToolbar(): void {
   if (y + toolbarH > cssHeight) y = local.y - toolbarH - 10;
   if (y < 0) y = Math.max(8, cssHeight - toolbarH - 8);
   x = Math.min(Math.max(8, x), Math.max(8, cssWidth - toolbarW - 8));
-  toolbarEl.style.transform =
-    `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  toolbarEl.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
 }
 
 function setupAnnotation(): void {
@@ -362,8 +390,27 @@ async function main(): Promise<void> {
 
 // ---------------------------------------------------------------- 放大镜
 
-const MAG_W = 100;
-const MAG_H = 72;
+/**
+ * 放大镜尺寸 —— **唯一来源**：backing store 与 CSS 尺寸都由它决定
+ * （`sizeMagnifier()` 写入 `--mag-w` / `--mag-h`，CSS 只取变量）。
+ *
+/**
+ * 放大镜画布尺寸 —— **唯一来源**：backing store 与 CSS 尺寸都由它决定
+ * （`sizeMagnifier()` 写入 `--mag-w` / `--mag-h`，CSS 只取变量）。
+ *
+ * 相对初始的 100×72 放大到 180×135（面积约 2.5 倍），倍率保持 4×，
+ * 即同样的放大倍数下能看到更大范围；页脚最宽的一行（RGB 格式约 94px）
+ * 连同内边距仍远小于 180px。
+ */
+const MAG_W = 180;
+const MAG_H = 135;
+/**
+ * 页脚高度（坐标 / 颜色 / 两行快捷键提示），跟随翻边与屏内夹紧都要用。
+ *
+ * **首次显示时实测** —— 文案或字号一改，硬编码值就会与真实高度不符，
+ * 放大镜在屏幕底部会被夹出可视区。
+ */
+let footH = 0;
 /** 相对屏幕的放大倍率：平时 1 CSS px 显示 scaleX 个源像素，放大镜里只显示 scaleX/ZOOM 个 */
 const MAG_ZOOM = 4;
 
@@ -378,12 +425,80 @@ sampleCanvas.width = 1;
 sampleCanvas.height = 1;
 const sampleCtx = sampleCanvas.getContext('2d');
 
+// ---------------------------------------------------------------- 取色显示
+
+/** 颜色显示格式，Shift 切换 */
+let colorFormat: 'hex' | 'rgb' = 'hex';
+/** 最近一次取到的颜色，供 C 键复制 */
+let lastColor: { r: number; g: number; b: number } | null = null;
+/** 复制反馈展示中；非 null 时不覆盖页脚文本 */
+let colorTextTimer: ReturnType<typeof setTimeout> | null = null;
+
+function colorHex(c: { r: number; g: number; b: number }): string {
+  return `#${[c.r, c.g, c.b]
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`;
+}
+
+/** 复制到剪贴板的值，不带标签：`#AABBCC` 或 `170, 187, 204` */
+function colorValue(
+  c: { r: number; g: number; b: number },
+  fmt: 'hex' | 'rgb',
+): string {
+  return fmt === 'hex' ? colorHex(c) : `${c.r}, ${c.g}, ${c.b}`;
+}
+
+/** 页脚显示的文本，带标签便于分辨当前格式 */
+function colorLabel(
+  c: { r: number; g: number; b: number },
+  fmt: 'hex' | 'rgb',
+): string {
+  return fmt === 'hex' ? `HEX: ${colorHex(c)}` : `RGB: ${colorValue(c, 'rgb')}`;
+}
+
+function applyColorText(): void {
+  if (!lastColor || colorTextTimer) return;
+  magRgb.textContent = colorLabel(lastColor, colorFormat);
+}
+
+function flashColorText(text: string): void {
+  magRgb.textContent = text;
+  if (colorTextTimer) clearTimeout(colorTextTimer);
+  colorTextTimer = setTimeout(() => {
+    colorTextTimer = null;
+    applyColorText();
+  }, 1000);
+}
+
+/** 复制**当前显示格式**的颜色值，页脚短暂回显结果 */
+async function copyCurrentColor(): Promise<void> {
+  if (!lastColor) return;
+  const value = colorValue(lastColor, colorFormat);
+  try {
+    const res = await window.api.overlay.copyText({ text: value });
+    flashColorText(res.ok ? `已复制 ${value}` : '复制失败');
+  } catch {
+    flashColorText('复制失败');
+  }
+}
+
 function sizeMagnifier(): void {
   const dpr = window.devicePixelRatio || 1;
   magCanvas.width = Math.max(1, Math.round(MAG_W * dpr));
   magCanvas.height = Math.max(1, Math.round(MAG_H * dpr));
+  // 尺寸只在上面的常量里定义，CSS 通过变量取，避免两处不同步
+  magEl.style.setProperty('--mag-w', `${MAG_W}px`);
+  magEl.style.setProperty('--mag-h', `${MAG_H}px`);
 }
 sizeMagnifier();
+
+/** 元素可见后量一次：总高 − 画布高 − 上下边框各 1px */
+function measureFooter(): void {
+  if (footH > 0) return;
+  const total = magEl.getBoundingClientRect().height;
+  if (total > MAG_H) footH = Math.round(total - MAG_H - 2);
+}
 
 function updateMagnifier(p: Point): void {
   // 只在「还没框出选区」时出现：框选中、调整中、确认后都不显示
@@ -394,6 +509,7 @@ function updateMagnifier(p: Point): void {
     return;
   }
   magEl.hidden = false;
+  measureFooter();
 
   const dpr = window.devicePixelRatio || 1;
   const destW = magCanvas.width;
@@ -452,26 +568,47 @@ function updateMagnifier(p: Point): void {
     sampleCtx.clearRect(0, 0, 1, 1);
     sampleCtx.drawImage(bg, px, py, 1, 1, 0, 0, 1, 1);
     const { data } = sampleCtx.getImageData(0, 0, 1, 1);
-    const hex = [data[0], data[1], data[2]]
-      .map((v) => v.toString(16).padStart(2, '0'))
-      .join('')
-      .toUpperCase();
-    magRgb.textContent = `RGB: #${hex}`;
+    lastColor = { r: data[0], g: data[1], b: data[2] };
+    applyColorText();
   }
 
   // 坐标用虚拟屏 DIP —— 与选区、钉图窗口 bounds 同一坐标系
-  magPos.textContent =
-    `坐标 ${Math.round(shot.bounds.x + p.x)},${Math.round(shot.bounds.y + p.y)}`;
+  magPos.textContent = `坐标 ${Math.round(shot.bounds.x + p.x)},${Math.round(shot.bounds.y + p.y)}`;
 
   // 跟随光标，右/下放不下就翻到另一侧，最后夹回窗口内
   let left = p.x + 20;
   let top = p.y + 20;
   if (left + MAG_W > cssWidth) left = p.x - MAG_W - 20;
-  if (top + MAG_H + 22 > cssHeight) top = p.y - MAG_H - 40;
+  const fh = footH > 0 ? footH : 40;
+  if (top + MAG_H + fh > cssHeight) top = p.y - MAG_H - fh - 4;
   left = Math.min(Math.max(4, left), Math.max(4, cssWidth - MAG_W - 4));
-  top = Math.min(Math.max(4, top), Math.max(4, cssHeight - MAG_H - 26));
+  top = Math.min(Math.max(4, top), Math.max(4, cssHeight - MAG_H - fh - 4));
   magEl.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
 }
+
+/**
+ * 放大镜快捷键：Shift 切换 HEX / RGB，C 复制当前显示的颜色值。
+ *
+ * 仅在放大镜可见时生效；文字输入中不接管（否则 `c` 会被打进文本框）。
+ * Shift 走 keydown 且忽略自动重复，按住不会来回翻。
+ * 无修饰键的 `C` 才复制 —— `Ctrl+C` 是工具条的复制整图，不能抢。
+ */
+window.addEventListener('keydown', (event) => {
+  if (event.target instanceof HTMLTextAreaElement) return;
+  if (magEl.hidden) return;
+
+  if (event.key === 'Shift') {
+    if (event.repeat) return;
+    colorFormat = colorFormat === 'hex' ? 'rgb' : 'hex';
+    applyColorText();
+    return;
+  }
+  if (event.key !== 'c' && event.key !== 'C') return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (!lastColor) return;
+  event.preventDefault();
+  void copyCurrentColor();
+});
 
 // 必须在指针分流监听器**之后**构造，编辑器的监听器才排在它后面
 setupAnnotation();
