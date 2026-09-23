@@ -1,0 +1,73 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stage {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------- 放大镜（仅框选前显示） ---------------- */
+
+.magnifier {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  width: 100px;
+  /* 不能吃事件，否则会挡住底下的画布 */
+  pointer-events: none;
+  overflow: hidden;
+  background: rgba(20, 22, 26, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.magnifier[hidden] {
+  display: none;
+}
+
+.magnifier canvas {
+  display: block;
+  width: 100px;
+  height: 72px;
+}
+
+.magnifier-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  line-height: 1.2;
+  color: #d7dade;
+  white-space: nowrap;
+}
+
+/* ---------------- 选区下方的浮动工具条 ----------------
+   外观（按钮 / 分隔线 / 色块 / 文字输入框）在 annotations/annotations.css，
+   这里只管浮条的位置与外形；具体坐标由 overlay.ts 按选区算 transform。 */
+
+.toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 15;
+  flex-direction: row;
+  max-width: calc(100vw - 16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws: http://localhost:*"
+    />
+    <title>overlay</title>
+    <link rel="stylesheet" href="/src/overlay/overlay.css" />
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <textarea id="text-editor" class="text-editor" hidden></textarea>
+    <div id="toolbar" class="toolbar" hidden></div>
+    <div id="magnifier" class="magnifier" hidden>
+      <canvas id="mag-stage"></canvas>
+      <div class="magnifier-foot">
+        <span id="mag-pos"></span>
+        <span id="mag-rgb"></span>
+      </div>
+    </div>
+    <script type="module" src="/src/overlay/overlay.ts"></script>
+  </body>
+</html>

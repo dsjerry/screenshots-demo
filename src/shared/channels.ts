@@ -1,0 +1,37 @@
+/**
+ * IPC 通道名的唯一来源 —— 任何地方都不允许写字符串字面量。
+ *
+ * 主 -> 渲染：`selection` / `teardown` / `compose` / `appState`（事件，send）
+ * 渲染 -> 主：`boot` / `ready` / `input` / `tool` / `action` / `shapes` / `export` /
+ *           `editState` / `move` / `action(pin)` / `startSnip`（invoke）
+ *
+ * `boot` 用 invoke 而不是 send，是为了避免「主进程先 send、渲染进程还没订阅」的竞态。
+ * `tool` / `action` / `shapes` / `editState` 是**遮罩阶段的标注**用的：
+ * 选区下方浮条选工具、点动作、回传本屏标注、告知文字输入框开合。
+ */
+export const CH = {
+  overlayBoot: 'overlay:boot',
+  overlaySelection: 'overlay:selection',
+  overlayTeardown: 'overlay:teardown',
+  overlayReady: 'overlay:ready',
+  overlayInput: 'overlay:input',
+  /** 遮罩选了哪个标注工具（主进程广播给其余遮罩，跨屏画图要一致） */
+  overlayTool: 'overlay:tool',
+  /** 遮罩工具条的动作：钉住 / 取消 / 复制 / 保存 */
+  overlayAction: 'overlay:action',
+  /** 主 -> 遮罩：把合成数据推给宿主遮罩，就地拼图导出（复制 / 保存） */
+  overlayCompose: 'overlay:compose',
+  /** 遮罩 -> 主：合成好的 PNG，交给主进程进剪贴板 / 存盘 */
+  overlayExport: 'overlay:export',
+  /** 遮罩把本屏标注（本屏 DIP）回传给主进程，确认时统一换算 */
+  overlayShapes: 'overlay:shapes',
+  /** 文字输入框开合 —— 打字时主进程别把 Enter/Esc 吃掉 */
+  overlayEditState: 'overlay:editState',
+
+  pinBoot: 'pin:boot',
+  pinReady: 'pin:ready',
+  pinAction: 'pin:action',
+
+  appState: 'app:state',
+  appStartSnip: 'app:startSnip',
+} as const;

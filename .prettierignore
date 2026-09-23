@@ -1,0 +1,10 @@
+# 依赖与构建产物 —— out/ 有几十万个文件，绝不能让 --write 摸到
+node_modules/
+out/
+.vite/
+dist/
+
+# 生成文件
+package-lock.json
+*.min.js
+*.map

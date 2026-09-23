@@ -1,0 +1,150 @@
+/* ------------------------------------------------------------------ *
+ * 标注工具条 / 文字输入框 —— 钉图窗口与截图遮罩共用。
+ * 布局不在这里：钉图是贴在图外的竖排条带（pin.css），遮罩是选区下方的
+ * 横向浮条（overlay.css），两者只共享外观与按钮状态。
+ * ------------------------------------------------------------------ */
+
+.toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 8px 6px;
+  flex-wrap: wrap;
+  background: rgba(24, 26, 30, 0.94);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
+  transition: opacity 0.18s ease;
+}
+
+.toolbar[data-orient='col'] {
+  align-content: flex-start;
+  align-items: stretch;
+}
+
+.toolbar[data-orient='row'] {
+  align-items: center;
+  align-content: center;
+}
+
+.toolbar[hidden] {
+  display: none;
+}
+
+.toolbar.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 展平：按钮直接作为工具条的 flex 项参与排布 */
+.group {
+  display: contents;
+}
+
+.toolbar button {
+  position: relative;
+  min-width: 34px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #d7dade;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+/* 组与组的分隔线（group 已展平，画在每组第一个按钮上） */
+.toolbar button.is-group-start {
+  margin-top: 10px;
+}
+
+.toolbar button.is-group-start::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: -5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* 横条：分隔线改画在左侧 */
+.toolbar[data-orient='row'] button.is-group-start {
+  margin-top: 0;
+  margin-left: 10px;
+}
+
+.toolbar[data-orient='row'] button.is-group-start::after {
+  left: -5px;
+  right: auto;
+  top: 2px;
+  bottom: 2px;
+  border-top: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.toolbar button.is-active {
+  background: #2f6fed;
+  border-color: #5b8df5;
+  color: #ffffff;
+}
+
+.toolbar button.is-danger:hover {
+  background: rgba(255, 59, 48, 0.85);
+  color: #ffffff;
+}
+
+.toolbar .swatch {
+  align-self: center;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+}
+
+.toolbar .swatch.is-active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px #2f6fed;
+}
+
+.toolbar .swatch.is-light {
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+.toolbar .stroke {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d7dade;
+}
+
+.toolbar .stroke.is-active {
+  color: #ffffff;
+}
+
+/* ---------------- 文字输入 ---------------- */
+
+.text-editor {
+  position: absolute;
+  z-index: 20;
+  min-width: 80px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  outline: 1px dashed rgba(47, 111, 237, 0.9);
+  background: transparent;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  line-height: 1.3;
+  resize: both;
+  overflow: hidden;
+}

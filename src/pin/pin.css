@@ -1,0 +1,73 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* 透明窗口：外阴影是画在窗口自己那圈留白里的（见 pin-layout 的 padding） */
+  background: transparent;
+}
+
+/* 整个窗口都是原生拖拽区 —— 比主进程 16ms 轮询 setBounds 顺，跨 DPI 也不掉帧 */
+body {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* ---------------- 图像 ----------------
+   位置与尺寸完全由主进程下发的四边留白决定：
+   left/top 定位，宽高 = 窗口 - 两侧留白（calc 免得再传一遍图像 DIP 尺寸）。 */
+#stage {
+  position: absolute;
+  top: var(--pad-top, 0px);
+  left: var(--pad-left, 0px);
+  width: calc(100% - var(--pad-left, 0px) - var(--pad-right, 0px));
+  height: calc(100% - var(--pad-top, 0px) - var(--pad-bottom, 0px));
+  display: block;
+  background: #000;
+  /* 外阴影：模糊半径 + 位移都在留白（≤16px）之内，不会被窗口边缘切掉 */
+  box-shadow:
+    0 3px 12px rgba(0, 0, 0, 0.55),
+    0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------------- 关闭按钮 ----------------
+   贴图像右上角内侧（留白是窗口的，按钮要落在图上），悬停窗口才浮现。
+   条带没了，它就是窗口里唯一的控件 —— 必须显式退出拖拽区，否则点不动。 */
+.pin-close {
+  position: absolute;
+  top: calc(var(--pad-top, 0px) + 8px);
+  right: calc(var(--pad-right, 0px) + 8px);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(20, 22, 26, 0.82);
+  color: #e8eaed;
+  font-size: 18px;
+  line-height: 26px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body:hover .pin-close,
+.pin-close:focus-visible {
+  opacity: 1;
+}
+
+.pin-close:hover {
+  background: rgba(255, 59, 48, 0.92);
+  color: #ffffff;
+}
