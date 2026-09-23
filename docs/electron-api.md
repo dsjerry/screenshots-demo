@@ -38,4 +38,3 @@
 ## 相关
 
 - [架构与调用逻辑](architecture.md)
-- [实现要点](implementation-notes.md)

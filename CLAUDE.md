@@ -11,7 +11,6 @@ Electron 跨屏截图工具：框选截图（可跨屏）→ **在原图上标�
 - `README.md` — 功能与使用方式（简介），详细内容都在 `docs/`
 - `docs/architecture.md` — 文件结构、窗口与进程关系、启动流程、一次截图调用链、选区阶段状态机（含 mermaid 图）、IPC 通道方向
 - `docs/electron-api.md` — 用到的 Electron 模块与 `webContents` 事件、Forge 的 Vite/Fuses 配置
-- `docs/implementation-notes.md` — 选区与标注 / 抓屏与 DPI / 遮罩渲染 / 贴图窗口的实现要点与踩坑（改这些地方前先读）
 - `AGENTS.md` — 校验规则：默认跑 `typecheck`，只有纯注释/文档/文案/CSS/常量这类白名单改动才跳过；动到类型面或构建面必须跑，打包校验只在影响打包方式时才做
 
 ## 分支与提交
@@ -119,7 +118,8 @@ npm run make     # 安装包（Windows 走 Squirrel）
 ## Conventions
 
 - 文件名 kebab-case；注释用**中文**，并倾向写「为什么 / 踩过的坑」——现有代码大量是这种风格，保持一致。
-- 格式化用 `npm run format`（Prettier 3，配置在 `.prettierrc`：**单引号 + 分号**、trailing comma `all`、80 宽、2 空格、LF）。为本项目自身约定 —— 不得套用「双引号 + 无分号」风格，否则会导致 `src/` 全量重排。
+- 格式化用 `npm run format`（Prettier 3，配置在 `.prettierrc`：**单引号 + 分号**、trailing comma `all`、120 宽、2 空格、LF）。为本项目自身约定 —— 不得套用「双引号 + 无分号」风格，否则会导致 `src/` 全量重排。
 - 加了 `.prettierrc` / `.prettierignore`；`.prettierignore` 中的 `out/` **必须保留** —— 构建产物数量巨大，`--write` 处理将造成长时间阻塞。
+- **不为每次代码改动追加文档**：文档只在**结构、对外行为、约定**变化时更新。实现细节、决策理由、踩坑原因优先写在**代码注释**里（改代码的人一定会看到），不要另开条目或新建文档复述一遍。
 - 日志带 `[模块]` 前缀：`[snip]`、`[capture]`、`[pin]`、`[pin-window]`、`[editor]`、`[overlay]`。
 - 每个 HTML 各自带 CSP meta（`img-src` 要放 `blob:`，`connect-src` 要放 dev 的 `ws:`）。
