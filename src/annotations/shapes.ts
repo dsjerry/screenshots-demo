@@ -15,12 +15,7 @@ function getScratch(key: string, w: number, h: number): HTMLCanvasElement {
   return c;
 }
 
-function normRect(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): { x: number; y: number; w: number; h: number } {
+function normRect(x: number, y: number, w: number, h: number): { x: number; y: number; w: number; h: number } {
   return {
     x: w < 0 ? x + w : x,
     y: h < 0 ? y + h : y,
@@ -41,27 +36,62 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
 
   switch (shape.type) {
     case 'arrow': {
-      const { x1, y1, x2, y2, color, width } = shape;
-      const angle = Math.atan2(y2 - y1, x2 - x1);
-      const head = Math.max(width * 4, 14);
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.lineWidth = width;
+      const { x1, y1, x2, y2, color, width, head } = shape;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.5) break;
 
-      const bx = x2 - head * 0.55 * Math.cos(angle);
-      const by = y2 - head * 0.55 * Math.sin(angle);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
+      const ux = dx / len;
+      const uy = dy / len;
+      const nx = -uy;
+      const ny = ux;
 
-      const spread = Math.PI / 7;
+      const shaftMax = Math.max(2, width * 2);
+      const headBase = Math.max(6, width * 5);
+      const headLen = Math.min(Math.max(width * 6, 26), len * 0.85);
+      const shaftLen = len - headLen;
+
+      // 尾端收成一个点，半宽按 p² 增长：前半程始终很细，靠近头部才明显变粗。
+      // 线性插值会整条均匀加粗，出不来参考图那种针尖起笔的效果。
+      const halfAt = (t: number) => {
+        const p = Math.min(t, shaftLen) / Math.max(shaftLen, 1);
+        return (shaftMax / 2) * p * p;
+      };
+      const edge = (t: number, side: number) => ({
+        x: x1 + ux * t + nx * halfAt(t) * side,
+        y: y1 + uy * t + ny * halfAt(t) * side,
+      });
+
+      const tip = edge(0, 1); // 尾端两侧重合于同一点
+      const shaft1 = edge(shaftLen, 1);
+      const shaft2 = edge(shaftLen, -1);
+      const rootX = x1 + ux * shaftLen;
+      const rootY = y1 + uy * shaftLen;
+      const wing1 = { x: rootX + nx * (headBase / 2), y: rootY + ny * (headBase / 2) };
+      const wing2 = { x: rootX - nx * (headBase / 2), y: rootY - ny * (headBase / 2) };
+
+      // 整支箭头是同一条轮廓：尖尾 → 杆身侧 → 肩部 → 头翼 → 尖尾。
+      // 实心与空心只是「填充」与「描边」的差别，形状完全一致。
       ctx.beginPath();
-      ctx.moveTo(x2, y2);
-      ctx.lineTo(x2 - head * Math.cos(angle - spread), y2 - head * Math.sin(angle - spread));
-      ctx.lineTo(x2 - head * Math.cos(angle + spread), y2 - head * Math.sin(angle + spread));
+      ctx.moveTo(tip.x, tip.y);
+      ctx.lineTo(shaft1.x, shaft1.y);
+      ctx.lineTo(wing1.x, wing1.y);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(wing2.x, wing2.y);
+      ctx.lineTo(shaft2.x, shaft2.y);
       ctx.closePath();
-      ctx.fill();
+
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.lineJoin = 'round';
+      if (head === 'open') {
+        // 空心：只描轮廓 —— 杆身与头部一并是空心的
+        ctx.lineWidth = Math.max(1, width * 0.8);
+        ctx.stroke();
+      } else {
+        ctx.fill();
+      }
       break;
     }
     case 'rect': {
@@ -76,15 +106,7 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
       ctx.strokeStyle = shape.color;
       ctx.lineWidth = shape.width;
       ctx.beginPath();
-      ctx.ellipse(
-        r.x + r.w / 2,
-        r.y + r.h / 2,
-        Math.max(r.w / 2, 0.5),
-        Math.max(r.h / 2, 0.5),
-        0,
-        0,
-        Math.PI * 2,
-      );
+      ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, Math.max(r.w / 2, 0.5), Math.max(r.h / 2, 0.5), 0, 0, Math.PI * 2);
       ctx.stroke();
       break;
     }
@@ -104,7 +126,11 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
       break;
     }
     case 'mosaic':
-      mosaic(ctx, shape.x, shape.y, shape.w, shape.h);
+      if (shape.mode === 'region') {
+        mosaic(ctx, shape.x, shape.y, shape.w, shape.h);
+      } else {
+        mosaicBrush(ctx, shape.points, shape.radius);
+      }
       break;
     case 'text': {
       ctx.fillStyle = shape.color;
@@ -149,18 +175,51 @@ export function measureTextBlock(
 }
 
 /**
- * 马赛克：先降采样再升采样。
+ * 把 `ctx` 上 [rx,ry,rw,rh] 区域像素化，返回承载结果的 scratch 画布
+ * （内容与区域左上角对齐，尺寸 rw×rh）。
  *
  * 关键是**降的时候开平滑、升的时候关平滑** —— 反过来就只会得到模糊而不是色块。
  * 快照必须先做：不能把 canvas 画到自己身上。
  */
-function mosaic(
+function pixelatedRegion(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+  blockTarget: number,
+): HTMLCanvasElement | null {
+  const cols = Math.max(1, Math.round(rw / blockTarget));
+  const rows = Math.max(1, Math.round(rh / blockTarget));
+
+  const snap = getScratch('snap', rw, rh);
+  const sctx = snap.getContext('2d');
+  if (!sctx) return null;
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.clearRect(0, 0, rw, rh);
+  sctx.drawImage(ctx.canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+
+  const tmp = getScratch('tmp', cols, rows);
+  const tctx = tmp.getContext('2d');
+  if (!tctx) return null;
+  tctx.setTransform(1, 0, 0, 1, 0, 0);
+  tctx.clearRect(0, 0, cols, rows);
+  tctx.imageSmoothingEnabled = true;
+  tctx.imageSmoothingQuality = 'high';
+  tctx.drawImage(snap, 0, 0, rw, rh, 0, 0, cols, rows);
+
+  const out = getScratch('pix', rw, rh);
+  const octx = out.getContext('2d');
+  if (!octx) return null;
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, rw, rh);
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(tmp, 0, 0, cols, rows, 0, 0, rw, rh);
+  return out;
+}
+
+/** 选区式马赛克：拖出来的矩形整体像素化。 */
+function mosaic(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   const rx = Math.max(0, Math.round(x));
   const ry = Math.max(0, Math.round(y));
   const rw = Math.min(Math.round(w), ctx.canvas.width - rx);
@@ -168,38 +227,58 @@ function mosaic(
   if (rw < 1 || rh < 1) return;
 
   const blockTarget = Math.min(40, Math.max(6, Math.round(Math.min(rw, rh) / 14)));
-  const cols = Math.max(1, Math.round(rw / blockTarget));
-  const rows = Math.max(1, Math.round(rh / blockTarget));
+  const pix = pixelatedRegion(ctx, rx, ry, rw, rh, blockTarget);
+  if (!pix) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(pix, 0, 0, rw, rh, rx, ry, rw, rh);
+  ctx.imageSmoothingEnabled = true;
+}
 
-  const snap = getScratch('snap', rw, rh);
-  const sctx = snap.getContext('2d');
-  if (!sctx) return;
-  sctx.setTransform(1, 0, 0, 1, 0, 0);
-  sctx.clearRect(0, 0, rw, rh);
-  sctx.drawImage(ctx.canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+/**
+ * 涂抹式马赛克：沿路径按半径逐个圆斑盖上去，半径即笔刷大小。
+ *
+ * 包围盒整体取一次样再逐斑裁圆 —— 逐斑取样会让重叠处反复对已像素化的内容
+ * 再采样，越描越糊。每个圆斑单独 save/clip/restore：clip() 是累加的，
+ * 循环外只做一次的话，第二个圆斑会画进前两个圆的交集里。
+ */
+function mosaicBrush(ctx: CanvasRenderingContext2D, points: Point[], radius: number): void {
+  if (points.length === 0) return;
+  const r = Math.max(2, Math.round(radius));
 
-  const tmp = getScratch('tmp', cols, rows);
-  const tctx = tmp.getContext('2d');
-  if (!tctx) return;
-  tctx.setTransform(1, 0, 0, 1, 0, 0);
-  tctx.clearRect(0, 0, cols, rows);
-  tctx.imageSmoothingEnabled = true;
-  tctx.imageSmoothingQuality = 'high';
-  tctx.drawImage(snap, 0, 0, rw, rh, 0, 0, cols, rows);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x - r < minX) minX = p.x - r;
+    if (p.y - r < minY) minY = p.y - r;
+    if (p.x + r > maxX) maxX = p.x + r;
+    if (p.y + r > maxY) maxY = p.y + r;
+  }
+  const rx = Math.max(0, Math.floor(minX));
+  const ry = Math.max(0, Math.floor(minY));
+  const rw = Math.min(ctx.canvas.width, Math.ceil(maxX)) - rx;
+  const rh = Math.min(ctx.canvas.height, Math.ceil(maxY)) - ry;
+  if (rw < 1 || rh < 1) return;
+
+  // 色块尺寸跟着笔刷半径走，比按区域尺寸推算更均匀
+  const pix = pixelatedRegion(ctx, rx, ry, rw, rh, Math.max(4, r));
+  if (!pix) return;
 
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(tmp, 0, 0, cols, rows, rx, ry, rw, rh);
+  for (const p of points) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(pix, 0, 0, rw, rh, rx, ry, rw, rh);
+    ctx.restore();
+  }
   ctx.imageSmoothingEnabled = true;
 }
 
 /** 拖动中的马赛克只画半透明框，避免每帧都做一次像素运算。 */
-export function drawDraftRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
+export function drawDraftRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   const r = normRect(x, y, w, h);
   ctx.save();
   ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
@@ -251,6 +330,31 @@ export function shapeBBox(shape: Shape, ctx: CanvasRenderingContext2D): Rect {
       height: Math.abs(shape.y2 - shape.y1),
     };
   }
+  if (shape.type === 'mosaic') {
+    if (shape.mode === 'region') {
+      const r = normRect(shape.x, shape.y, shape.w, shape.h);
+      return { x: r.x, y: r.y, width: r.w, height: r.h };
+    }
+    // 涂抹：路径点向外扩一个半径
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of shape.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 };
+    const rr = shape.radius;
+    return {
+      x: minX - rr,
+      y: minY - rr,
+      width: maxX - minX + rr * 2,
+      height: maxY - minY + rr * 2,
+    };
+  }
   const r = normRect(shape.x, shape.y, shape.w, shape.h);
   return { x: r.x, y: r.y, width: r.w, height: r.h };
 }
@@ -283,17 +387,11 @@ export function applyShapeHandle(
   ctx: CanvasRenderingContext2D,
 ): Shape {
   if (origin.type === 'arrow') {
-    return handle === 'p1'
-      ? { ...origin, x1: cursor.x, y1: cursor.y }
-      : { ...origin, x2: cursor.x, y2: cursor.y };
+    return handle === 'p1' ? { ...origin, x1: cursor.x, y1: cursor.y } : { ...origin, x2: cursor.x, y2: cursor.y };
   }
   const box = shapeBBox(origin, ctx);
   const next = resizeRect(box, handle as HandleId, cursor);
-  if (
-    origin.type === 'rect' ||
-    origin.type === 'ellipse' ||
-    origin.type === 'mosaic'
-  ) {
+  if (origin.type === 'rect' || origin.type === 'ellipse') {
     return { ...origin, x: next.x, y: next.y, w: next.width, h: next.height };
   }
   return cloneShape(origin);
@@ -306,17 +404,15 @@ export function applyShapeHandle(
  * 马赛克例外：它对下层取样，空白检测画布上取不到颜色（alpha 恒为 0），
  * 改按包围盒判定。
  */
-export function isShapeHit(
-  canvas: HTMLCanvasElement,
-  shape: Shape,
-  p: Point,
-  tol: number,
-): boolean {
+export function isShapeHit(canvas: HTMLCanvasElement, shape: Shape, p: Point, tol: number): boolean {
   if (shape.type === 'mosaic') {
-    const r = normRect(shape.x, shape.y, shape.w, shape.h);
-    return (
-      p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
-    );
+    if (shape.mode === 'region') {
+      const r = normRect(shape.x, shape.y, shape.w, shape.h);
+      return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    }
+    // 涂抹：任一圆斑盖住光标即命中，半径再放宽一个容差便于点选
+    const rr = shape.radius + tol;
+    return shape.points.some((q) => Math.hypot(q.x - p.x, q.y - p.y) <= rr);
   }
 
   const x0 = Math.max(0, Math.floor(p.x - tol));
@@ -345,11 +441,7 @@ export function isShapeHit(
  * 只能移动的画一圈虚线包围盒 —— 摆出手柄却拖不动更让人困惑。
  * `unit` 是手柄边长，按图像像素 / 屏幕像素的换算放大，别在高 DPI 图上画成一个点。
  */
-export function drawSelection(
-  ctx: CanvasRenderingContext2D,
-  shape: Shape,
-  unit: number,
-): void {
+export function drawSelection(ctx: CanvasRenderingContext2D, shape: Shape, unit: number): void {
   const box = shapeBBox(shape, ctx);
   ctx.save();
   ctx.lineWidth = 1;
@@ -372,12 +464,7 @@ export function drawSelection(
     for (const id of HANDLE_IDS) {
       const hp = handlePoint(box, id);
       ctx.fillRect(hp.x - unit / 2, hp.y - unit / 2, unit, unit);
-      ctx.strokeRect(
-        hp.x - unit / 2 + 0.5,
-        hp.y - unit / 2 + 0.5,
-        unit - 1,
-        unit - 1,
-      );
+      ctx.strokeRect(hp.x - unit / 2 + 0.5, hp.y - unit / 2 + 0.5, unit - 1, unit - 1);
     }
   } else {
     ctx.setLineDash([4, 4]);
@@ -406,6 +493,15 @@ export function translateShape(shape: Shape, dx: number, dy: number): Shape {
       points: shape.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
     };
   }
+  if (shape.type === 'mosaic') {
+    if (shape.mode === 'region') {
+      return { ...shape, x: shape.x + dx, y: shape.y + dy };
+    }
+    return {
+      ...shape,
+      points: shape.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+    };
+  }
   return { ...shape, x: shape.x + dx, y: shape.y + dy };
 }
 
@@ -413,4 +509,25 @@ export function translateShape(shape: Shape, dx: number, dy: number): Shape {
 export function withColor(shape: Shape, color: string): Shape {
   if (shape.type === 'mosaic') return shape;
   return { ...shape, color };
+}
+
+/**
+ * 拖动中的涂抹马赛克：只描路径，不做像素运算。
+ * 与选区式的半透明框同一思路 —— 预览不必与最终结果一致，松手才像素化。
+ */
+export function drawDraftPath(ctx: CanvasRenderingContext2D, points: Point[], radius: number): void {
+  if (points.length === 0) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+  ctx.lineWidth = Math.max(4, radius * 2);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  if (points.length === 1) ctx.lineTo(points[0].x + 0.01, points[0].y);
+  ctx.stroke();
+  ctx.restore();
 }

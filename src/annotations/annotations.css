@@ -1,41 +1,19 @@
 /* ------------------------------------------------------------------ *
- * 标注工具条 / 文字输入框 —— 钉图窗口与截图遮罩共用。
- * 布局不在这里：钉图是贴在图外的竖排条带（pin.css），遮罩是选区下方的
- * 横向浮条（overlay.css），两者只共享外观与按钮状态。
+ * 标注工具条的**外观**（按钮 / 分组 / 色块 / 文字输入框）与文字输入框。
+ *
+ * 布局不在此处：容器与两行的结构由宿主提供（见 overlay.css 的
+ * `.toolbar` / `.toolbar-row`），本文件只负责按钮状态与分组分隔线。
  * ------------------------------------------------------------------ */
 
-.toolbar {
-  display: flex;
-  gap: 2px;
-  padding: 8px 6px;
-  flex-wrap: wrap;
-  background: rgba(24, 26, 30, 0.94);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
-  transition: opacity 0.18s ease;
-}
-
-.toolbar[data-orient='col'] {
-  align-content: flex-start;
-  align-items: stretch;
-}
-
-.toolbar[data-orient='row'] {
-  align-items: center;
-  align-content: center;
-}
-
-.toolbar[hidden] {
-  display: none;
-}
-
-.toolbar.is-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* 展平：按钮直接作为工具条的 flex 项参与排布 */
+/* 展平：按钮直接作为所在行的 flex 项参与排布 */
 .group {
   display: contents;
+}
+
+/* 分组按当前工具显隐（display: contents 时 UA 的 [hidden] 规则不生效，
+   必须自己写一条同为作者样式的规则） */
+.group[hidden] {
+  display: none;
 }
 
 .toolbar button {
@@ -53,32 +31,18 @@
   cursor: pointer;
 }
 
-/* 组与组的分隔线（group 已展平，画在每组第一个按钮上） */
+/* 组与组的分隔线：group 已展平，改画在每组第一个按钮上（每行第一组不留线）。
+   两行式是横排，分隔线画在按钮左侧。 */
 .toolbar button.is-group-start {
-  margin-top: 10px;
+  margin-left: 10px;
 }
 
 .toolbar button.is-group-start::after {
   content: '';
   position: absolute;
-  left: 2px;
-  right: 2px;
-  top: -5px;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-/* 横条：分隔线改画在左侧 */
-.toolbar[data-orient='row'] button.is-group-start {
-  margin-top: 0;
-  margin-left: 10px;
-}
-
-.toolbar[data-orient='row'] button.is-group-start::after {
   left: -5px;
-  right: auto;
   top: 2px;
   bottom: 2px;
-  border-top: 0;
   border-left: 1px solid rgba(255, 255, 255, 0.14);
 }
 
@@ -95,6 +59,17 @@
   background: #2f6fed;
   border-color: #5b8df5;
   color: #ffffff;
+}
+
+/* 主操作（确定类）：绿色，对应业界通行的 ✓ */
+.toolbar button.is-primary {
+  background: #1f9d55;
+  border-color: #2bb673;
+  color: #ffffff;
+}
+
+.toolbar button.is-primary:hover:not(:disabled) {
+  background: #23a862;
 }
 
 .toolbar button.is-danger:hover {

@@ -107,23 +107,14 @@ export interface PinInitPayload {
 }
 
 export type PinAction =
-  | { kind: 'copy'; png: Uint8Array }
-  | { kind: 'save'; png: Uint8Array; suggestedName: string }
-  | { kind: 'close' };
+  { kind: 'copy'; png: Uint8Array } | { kind: 'save'; png: Uint8Array; suggestedName: string } | { kind: 'close' };
 
 export interface PinActionResult {
   ok: boolean;
   error?: string;
 }
 
-export type ToolId =
-  | 'hand'
-  | 'arrow'
-  | 'rect'
-  | 'ellipse'
-  | 'pen'
-  | 'mosaic'
-  | 'text';
+export type ToolId = 'hand' | 'arrow' | 'rect' | 'ellipse' | 'pen' | 'mosaic' | 'text';
 
 export interface StrokeBase {
   color: string;
@@ -134,10 +125,25 @@ export interface StrokeBase {
  * 所有标注坐标都在**图像像素空间**（画布 backing store 的像素），
  * 与窗口 DIP / devicePixelRatio 无关，因此拖动窗口不会让标注错位。
  */
+/** 箭头样式：实心（整支填充）/ 空心（整支描边，杆身与头部同为空心） */
+export type ArrowHead = 'solid' | 'open';
+
+/** 马赛克绘制形式：选区（拖矩形）/ 涂抹（沿路径的笔刷圆斑） */
+export type MosaicMode = 'region' | 'brush';
+
 export type Shape =
-  | ({ type: 'arrow' } & StrokeBase & { x1: number; y1: number; x2: number; y2: number })
+  | ({ type: 'arrow' } & StrokeBase & {
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+        head: ArrowHead;
+      })
   | ({ type: 'rect' } & StrokeBase & { x: number; y: number; w: number; h: number })
   | ({ type: 'ellipse' } & StrokeBase & { x: number; y: number; w: number; h: number })
   | ({ type: 'pen' } & StrokeBase & { points: Point[] })
-  | { type: 'mosaic'; x: number; y: number; w: number; h: number }
+  | ({ type: 'mosaic' } & (
+      | { mode: 'region'; x: number; y: number; w: number; h: number }
+      | { mode: 'brush'; points: Point[]; radius: number }
+    ))
   | { type: 'text'; x: number; y: number; text: string; color: string; size: number };

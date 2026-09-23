@@ -241,16 +241,10 @@ function syncToolbar(): void {
 }
 
 function setupAnnotation(): void {
-  // 与钉图工具条**同一个组件、同样的四组**（工具/色块/线宽/历史），
-  // 只有尾部动作不同；这里没有「确定」—— 主流截图工具都没有。
+  // 两行式工具条（结构见 annotations/toolbar.ts），这里只注入动作组。
+  // 没有「确定」步骤：复制 / 保存就地合成即结束，钉住才是主操作；
+  // 动作顺序与业界一致 —— 保存类在前，取消（红）与确定（绿）收尾。
   const actions: ToolbarAction[] = [
-    {
-      id: 'pin',
-      label: '钉住',
-      run: () => {
-        void window.api.overlay.action({ kind: 'pin' });
-      },
-    },
     {
       id: 'copy',
       label: '复制',
@@ -274,6 +268,14 @@ function setupAnnotation(): void {
         void window.api.overlay.action({ kind: 'cancel' });
       },
     },
+    {
+      id: 'pin',
+      label: '钉住',
+      primary: true,
+      run: () => {
+        void window.api.overlay.action({ kind: 'pin' });
+      },
+    },
   ];
 
   const instance = new Editor(canvas, textEditorEl, {
@@ -290,14 +292,13 @@ function setupAnnotation(): void {
 
   instance.onToolChange = (tool) => {
     void window.api.overlay.tool({ tool });
+    // 属性行（线宽 + 色块）随工具显隐，容器高度会变，必须让定位逻辑重新量
+    toolbarW = 0;
+    toolbarH = 0;
     if (lastPointer) updateCursor(lastPointer);
   };
 
-  createToolbar(toolbarEl, instance, {
-    orient: 'row',
-    idleHide: false,
-    actions,
-  });
+  createToolbar(toolbarEl, instance, { actions });
 
   // createToolbar 已经占了 onHistoryChange（刷新撤销/重做禁用态），
   // 链上去把本屏标注回传主进程 —— 只在历史变化时发，不是每帧。

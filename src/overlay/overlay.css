@@ -75,16 +75,38 @@ body {
 }
 
 /* ---------------- 选区下方的浮动工具条 ----------------
-   外观（按钮 / 分隔线 / 色块 / 文字输入框）在 annotations/annotations.css，
-   这里只管浮条的位置与外形；具体坐标由 overlay.ts 按选区算 transform。 */
+   业界通行的两行式：行 1 工具/历史/动作，行 2 当前工具的属性（线宽 + 色块）。
+   按钮与分组的外观在 annotations/annotations.css，这里只管容器与两行的结构；
+   具体坐标由 overlay.ts 按选区算 transform。 */
 
 .toolbar {
   position: fixed;
   top: 0;
   left: 0;
   z-index: 15;
-  flex-direction: row;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   max-width: calc(100vw - 16px);
+}
+
+.toolbar[hidden] {
+  display: none;
+}
+
+/* 每行一个圆角深底条，行与行之间留 6px */
+.toolbar-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(24, 26, 30, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
+}
+
+.toolbar-row[hidden] {
+  display: none;
 }

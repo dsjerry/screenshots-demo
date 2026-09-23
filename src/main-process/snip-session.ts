@@ -719,8 +719,27 @@ function mapShape(shape: Shape, dx: number, dy: number, k: number): Shape {
         y: (shape.y + dy) * k,
         size: shape.size * k,
       };
+    case 'mosaic':
+      if (shape.mode === 'brush') {
+        // 涂抹：点与半径一起换算
+        return {
+          ...shape,
+          radius: shape.radius * k,
+          points: shape.points.map((p) => ({
+            x: (p.x + dx) * k,
+            y: (p.y + dy) * k,
+          })),
+        };
+      }
+      return {
+        ...shape,
+        x: (shape.x + dx) * k,
+        y: (shape.y + dy) * k,
+        w: shape.w * k,
+        h: shape.h * k,
+      };
     default:
-      // rect / ellipse / mosaic：w、h 可能是负的，×正数方向不变
+      // rect / ellipse：w、h 可能是负的，×正数方向不变
       return {
         ...shape,
         x: (shape.x + dx) * k,

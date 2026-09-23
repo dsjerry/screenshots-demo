@@ -1,6 +1,7 @@
 import {
   applyShapeHandle,
   cloneShape,
+  drawDraftPath,
   drawDraftRect,
   drawSelection,
   drawShape,
@@ -13,19 +14,14 @@ import {
 import type { ShapeHandle } from './shapes';
 import { HANDLE_CURSOR, HANDLE_HIT_DIP } from '../shared/selection';
 import type { HandleId } from '../shared/selection';
-import type { Point, Shape, ToolId } from '../shared/types';
+import type { ArrowHead, MosaicMode, Point, Shape, ToolId } from '../shared/types';
 
-const COLORS = [
-  '#ff3b30',
-  '#ff9500',
-  '#ffcc00',
-  '#34c759',
-  '#2f6fed',
-  '#af52de',
-  '#ffffff',
-  '#000000',
-];
+const COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#2f6fed', '#af52de', '#ffffff', '#000000'];
 const WIDTHS = [2, 4, 6, 10];
+const ARROW_HEADS: ArrowHead[] = ['solid', 'open'];
+/** 文字字号独立于线宽 —— 线宽对文字没有意义 */
+const FONT_SIZES = [16, 24, 32, 48];
+const MOSAIC_MODES: MosaicMode[] = ['region', 'brush'];
 
 /** 宿主注入的钩子 —— 目前只有截图遮罩在用（钉图钉住后是只读贴图）。 */
 export interface EditorOptions {
@@ -65,15 +61,7 @@ type PointerMode = 'draw' | 'move' | 'handle';
  */
 export class Editor {
   readonly canvas: HTMLCanvasElement;
-  readonly toolIds: ToolId[] = [
-    'hand',
-    'arrow',
-    'rect',
-    'ellipse',
-    'pen',
-    'mosaic',
-    'text',
-  ];
+  readonly toolIds: ToolId[] = ['hand', 'arrow', 'rect', 'ellipse', 'pen', 'mosaic', 'text'];
 
   private readonly ctx: CanvasRenderingContext2D;
   private readonly textEditor: HTMLTextAreaElement;
@@ -98,6 +86,9 @@ export class Editor {
   private current: ToolId = 'hand';
   private color = COLORS[0];
   private width = 4;
+  private arrowHead: ArrowHead = 'solid';
+  private fontSize = FONT_SIZES[0];
+  private mosaicMode: MosaicMode = 'region';
 
   private penPoints: Point[] = [];
   private mode: PointerMode | null = null;
@@ -110,11 +101,7 @@ export class Editor {
   /** 每次撤销 / 重做 / 新增 / 删除 / 清空 / 改色 / 落盘调整后触发 */
   onHistoryChange?: () => void;
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    textEditor: HTMLTextAreaElement,
-    opts: EditorOptions,
-  ) {
+  constructor(canvas: HTMLCanvasElement, textEditor: HTMLTextAreaElement, opts: EditorOptions) {
     this.canvas = canvas;
     this.textEditor = textEditor;
     this.opts = opts;
@@ -139,7 +126,11 @@ export class Editor {
     if (this.editing) drawShape(ctx, this.editing);
     if (this.draft) {
       if (this.draft.type === 'mosaic') {
-        drawDraftRect(ctx, this.draft.x, this.draft.y, this.draft.w, this.draft.h);
+        if (this.draft.mode === 'region') {
+          drawDraftRect(ctx, this.draft.x, this.draft.y, this.draft.w, this.draft.h);
+        } else {
+          drawDraftPath(ctx, this.draft.points, this.draft.radius);
+        }
       } else if (this.draft.type !== 'text') {
         // 文字在输入框里实时可见，画布上先不画
         drawShape(ctx, this.draft);
@@ -159,6 +150,30 @@ export class Editor {
 
   get widthValue(): number {
     return this.width;
+  }
+
+  get arrowHeads(): ArrowHead[] {
+    return ARROW_HEADS;
+  }
+
+  get arrowHeadValue(): ArrowHead {
+    return this.arrowHead;
+  }
+
+  get fontSizes(): number[] {
+    return FONT_SIZES;
+  }
+
+  get fontSizeValue(): number {
+    return this.fontSize;
+  }
+
+  get mosaicModes(): MosaicMode[] {
+    return MOSAIC_MODES;
+  }
+
+  get mosaicModeValue(): MosaicMode {
+    return this.mosaicMode;
   }
 
   get canUndo(): boolean {
@@ -274,14 +289,8 @@ export class Editor {
   private toImage(event: { clientX: number; clientY: number }): Point {
     const rect = this.canvas.getBoundingClientRect();
     // 'css'：本窗口 CSS px ≡ 本屏 DIP，不做换算（ctx 已按 dpr 缩放过）
-    const sx =
-      this.opts.coords === 'css' || rect.width <= 0
-        ? 1
-        : this.canvas.width / rect.width;
-    const sy =
-      this.opts.coords === 'css' || rect.height <= 0
-        ? 1
-        : this.canvas.height / rect.height;
+    const sx = this.opts.coords === 'css' || rect.width <= 0 ? 1 : this.canvas.width / rect.width;
+    const sy = this.opts.coords === 'css' || rect.height <= 0 ? 1 : this.canvas.height / rect.height;
     this.pxScale = sx;
     return {
       x: (event.clientX - rect.left) * sx,
@@ -327,6 +336,49 @@ export class Editor {
     this.render();
   }
 
+  /** 换箭头头部样式；选中箭头时同步改这一条（与 setColor 同语义） */
+  setArrowHead(head: ArrowHead): void {
+    this.arrowHead = head;
+    const target = this.selected;
+    if (target && target.type === 'arrow' && target.head !== head) {
+      const idx = this.shapes.indexOf(target);
+      if (idx >= 0) {
+        this.beginChange();
+        const next = { ...target, head };
+        this.shapes[idx] = next;
+        this.selected = next;
+        this.onHistoryChange?.();
+        console.log(`[editor] 换箭头头部 index=${idx} head=${head}`);
+      }
+    }
+    this.render();
+  }
+
+  /** 换字号；选中文字时同步改这一条 */
+  setFontSize(size: number): void {
+    this.fontSize = size;
+    const target = this.selected;
+    if (target && target.type === 'text' && target.size !== size) {
+      const idx = this.shapes.indexOf(target);
+      if (idx >= 0) {
+        this.beginChange();
+        const next = { ...target, size };
+        this.shapes[idx] = next;
+        this.selected = next;
+        this.onHistoryChange?.();
+        console.log(`[editor] 改字号 index=${idx} size=${size}`);
+      }
+    }
+    this.render();
+  }
+
+  /** 切换马赛克绘制形式 —— 纯工具设置，不进历史 */
+  setMosaicMode(mode: MosaicMode): void {
+    if (this.mosaicMode === mode) return;
+    this.mosaicMode = mode;
+    this.render();
+  }
+
   setWidth(width: number): void {
     this.width = width;
     this.render();
@@ -345,10 +397,7 @@ export class Editor {
     const p = this.toImage(event);
     const handle = this.hitSelectedHandle(p);
     if (handle) {
-      this.canvas.style.cursor =
-        handle === 'p1' || handle === 'p2'
-          ? 'crosshair'
-          : HANDLE_CURSOR[handle as HandleId];
+      this.canvas.style.cursor = handle === 'p1' || handle === 'p2' ? 'crosshair' : HANDLE_CURSOR[handle as HandleId];
       return;
     }
     if (isShapeHit(this.canvas, this.selected, p, this.hitTolerance())) {
@@ -427,6 +476,7 @@ export class Editor {
           y2: p.y,
           color: this.color,
           width: this.width,
+          head: this.arrowHead,
         };
       } else if (this.current === 'pen') {
         this.draft = {
@@ -436,7 +486,15 @@ export class Editor {
           width: this.width,
         };
       } else if (this.current === 'mosaic') {
-        this.draft = { type: 'mosaic', x: p.x, y: p.y, w: 0, h: 0 };
+        this.draft =
+          this.mosaicMode === 'region'
+            ? { type: 'mosaic', mode: 'region', x: p.x, y: p.y, w: 0, h: 0 }
+            : {
+                type: 'mosaic',
+                mode: 'brush',
+                points: [p],
+                radius: Math.max(2, this.width),
+              };
       } else {
         this.draft = {
           type: this.current === 'rect' ? 'rect' : 'ellipse',
@@ -460,23 +518,14 @@ export class Editor {
 
       if (this.mode === 'move') {
         if (!this.editing || !this.editOrigin || !this.editStart) return;
-        this.editing = translateShape(
-          this.editOrigin,
-          p.x - this.editStart.x,
-          p.y - this.editStart.y,
-        );
+        this.editing = translateShape(this.editOrigin, p.x - this.editStart.x, p.y - this.editStart.y);
         this.render();
         return;
       }
 
       if (this.mode === 'handle') {
         if (!this.editing || !this.editOrigin || !this.editHandle) return;
-        this.editing = applyShapeHandle(
-          this.editOrigin,
-          this.editHandle,
-          p,
-          this.ctx,
-        );
+        this.editing = applyShapeHandle(this.editOrigin, this.editHandle, p, this.ctx);
         this.render();
         return;
       }
@@ -493,9 +542,15 @@ export class Editor {
         this.draft.w = p.x - this.draft.x;
         this.draft.h = p.y - this.draft.y;
       } else if (this.draft.type === 'mosaic') {
-        const start = this.penPoints[0];
-        this.draft.w = p.x - start.x;
-        this.draft.h = p.y - start.y;
+        if (this.draft.mode === 'region') {
+          const start = this.penPoints[0];
+          this.draft.w = p.x - start.x;
+          this.draft.h = p.y - start.y;
+        } else {
+          // 涂抹与画笔同样累加路径点
+          this.penPoints.push(p);
+          this.draft.points = [...this.penPoints];
+        }
       }
       this.render();
     });
@@ -508,9 +563,7 @@ export class Editor {
         this.mode = null;
         if (this.draft && !this.tooSmall(this.draft)) {
           this.commit(this.draft);
-          console.log(
-            `[editor] 新增标注 type=${this.draft.type} 总数=${this.shapes.length}`,
-          );
+          console.log(`[editor] 新增标注 type=${this.draft.type} 总数=${this.shapes.length}`);
         }
         this.draft = null;
         this.penPoints = [];
@@ -521,9 +574,7 @@ export class Editor {
       // mode === 'move' | 'handle'：没真动过就不留一条空历史
       this.mode = null;
       const changed =
-        this.editing &&
-        this.editOrigin &&
-        JSON.stringify(this.editing) !== JSON.stringify(this.editOrigin);
+        this.editing && this.editOrigin && JSON.stringify(this.editing) !== JSON.stringify(this.editOrigin);
       if (changed && this.editingOf) {
         this.beginChange();
         const idx = this.shapes.indexOf(this.editingOf);
@@ -551,7 +602,10 @@ export class Editor {
       return Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1) < 6;
     }
     if (shape.type === 'pen') return shape.points.length < 2;
-    if (shape.type === 'mosaic') return Math.abs(shape.w) < 6 || Math.abs(shape.h) < 6;
+    if (shape.type === 'mosaic') {
+      if (shape.mode === 'brush') return shape.points.length < 3;
+      return Math.abs(shape.w) < 6 || Math.abs(shape.h) < 6;
+    }
     if (shape.type === 'rect' || shape.type === 'ellipse') {
       return Math.abs(shape.w) < 3 || Math.abs(shape.h) < 3;
     }
@@ -570,20 +624,16 @@ export class Editor {
    *    否则会堆叠监听器、旧文本被 value='' 清掉。
    */
   private openTextEditor(event: MouseEvent): void {
-    console.log(
-      `[editor] 打开文字输入框 client=${Math.round(event.clientX)},${Math.round(event.clientY)}`,
-    );
+    console.log(`[editor] 打开文字输入框 client=${Math.round(event.clientX)},${Math.round(event.clientY)}`);
     this.closeActiveText?.();
 
     const ta = this.textEditor;
     const rect = this.canvas.getBoundingClientRect();
-    const fontSize = Math.max(14, Math.round(this.width * 4));
+    // 字号独立于线宽（线宽对文字没有意义），由行 2 的字号按钮选择
+    const fontSize = this.fontSize;
     // 输入框字号要和「最终画上去的字号」在屏幕上一样大：
     // 钉图是图像像素空间（1 图像 px = 1/outScale CSS px），遮罩是 DIP 空间（1:1）
-    const scale =
-      this.opts.coords === 'css' || rect.width <= 0
-        ? 1
-        : rect.width / this.canvas.width;
+    const scale = this.opts.coords === 'css' || rect.width <= 0 ? 1 : rect.width / this.canvas.width;
 
     ta.value = '';
     ta.hidden = false;
@@ -669,21 +719,15 @@ export class Editor {
     const block = measureTextBlock(this.ctx, text, size);
     // 夹紧边界必须和坐标空间一致：钉图用画布像素，遮罩用 CSS px（= DIP）
     const rect = this.canvas.getBoundingClientRect();
-    const maxX =
-      this.opts.coords === 'css'
-        ? rect.width
-        : this.canvas.width;
-    const maxY =
-      this.opts.coords === 'css'
-        ? rect.height
-        : this.canvas.height;
+    const maxX = this.opts.coords === 'css' ? rect.width : this.canvas.width;
+    const maxY = this.opts.coords === 'css' ? rect.height : this.canvas.height;
     return {
       x: Math.min(Math.max(origin.x, 0), Math.max(0, maxX - block.width)),
       y: Math.min(Math.max(origin.y, 0), Math.max(0, maxY - block.height)),
     };
   }
 
-  // ------------------------------------------------------------ 导出 / 关闭
+  // ------------------------------------------------------------ 工具属性
 
   get colors(): string[] {
     return COLORS;
