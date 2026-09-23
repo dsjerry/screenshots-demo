@@ -111,6 +111,7 @@ npm run make     # 安装包（Windows 走 Squirrel）
 - 遮罩/pin 窗口没有 DevTools → `src/main-process/renderer-log.ts` 把渲染进程 console 转发到主进程，排查先看这里的输出。
 - 标注历史是**整份快照**（`Editor.past` / `future`），加 / 删 / 清空 / 改色 / 移动共用它；**每次变更前必须先 `beginChange()`**，否则那步不可撤销。拖动中的图形改的是 `editing` 副本，松手才替换 `shapes` 里的原对象。
 - 遮罩是纯投影：选区只在主进程，实时性由 16ms 轮询 `startPoll()` → `broadcast()` 保证。**三种拖动模式（重新框选 / 整体移动 / 拖手柄）都必须启动轮询**，漏掉任一模式都会导致按住期间不刷新、仅在松手时更新。
+- **光标在哪块屏，键盘事件就归哪块屏**：遮罩焦点不会自动跟随光标，`pointermove` 中 `!document.hasFocus()` 时请求 `overlay:focus` 切前台（带 `focusRequesting` 去重）—— 否则 `Ctrl+Z` / `C` 会作用到上一块屏的窗口。
 - 遮罩的 `pointerdown` 分流监听器必须**先于** `new Editor()` 注册 —— 依赖 `stopImmediatePropagation()` 阻断编辑器；顺序颠倒则无法调整选区。
 - 广播里的 `activeTool` 只在**与本地不同**时才 `setTool`：`setTool` 会清草稿/选中，每次广播都调会把正在画的笔画清掉。
 - 改了 `shapes` 就要 `onHistoryChange`（遮罩靠它回传标注、工具条靠它刷禁用态）；`beginChange()` 之前必须先改前快照。

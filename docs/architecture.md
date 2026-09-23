@@ -84,7 +84,7 @@ flowchart TD
     B --> B3["index / overlay / pin 三个 renderer"]
 
     B1 --> C["app.whenReady()"]
-    C --> D["registerIpc()<br/>ipcMain.handle × 12（共 16 个通道，4 个是主进程 send）"]
+    C --> D["registerIpc()<br/>ipcMain.handle × 14（共 18 个通道，4 个是主进程 send）"]
     C --> E["createMainWindow()<br/>close → 只 hide，常驻后台"]
     C --> F["createTray()<br/>左键 = 截图，右键 = 菜单（退出在菜单里）"]
     C --> G["globalShortcut Ctrl+Shift+A<br/>注册失败只告警，退回按钮 / 托盘"]
@@ -156,6 +156,6 @@ stateDiagram-v2
 ## IPC 通道方向
 
 - **主 → 渲染**（`send`）：`overlay:selection`、`overlay:teardown`、`overlay:compose`、`app:state`
-- **渲染 → 主**（`invoke`）：`overlay:boot`、`overlay:ready`、`overlay:input`、`overlay:tool`、`overlay:action`、`overlay:shapes`、`overlay:editState`、`overlay:export`、`pin:boot`、`pin:ready`、`pin:action`、`app:startSnip`
+- **渲染 → 主**（`invoke`）：`overlay:boot`、`overlay:ready`、`overlay:input`、`overlay:tool`、`overlay:action`、`overlay:shapes`、`overlay:editState`、`overlay:focus`、`overlay:copyText`、`overlay:export`、`pin:boot`、`pin:ready`、`pin:action`、`app:startSnip`
 
-共 16 个通道（12 个 `invoke` + 4 个 `send`），全部定义在 `src/shared/channels.ts` —— 任何地方都不允许写字符串字面量。
+共 18 个通道（14 个 `invoke` + 4 个 `send`），全部定义在 `src/shared/channels.ts` —— 任何地方都不允许写字符串字面量。
