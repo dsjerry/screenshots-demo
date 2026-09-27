@@ -84,7 +84,7 @@ flowchart TD
     B --> B3["index / overlay / pin 三个 renderer"]
 
     B1 --> C["app.whenReady()"]
-    C --> D["registerIpc()<br/>ipcMain.handle × 14（共 18 个通道，4 个是主进程 send）"]
+    C --> D["registerIpc()<br/>ipcMain.handle × 16（共 22 个通道，6 个是主进程 send）"]
     C --> E["createMainWindow()<br/>close → 只 hide，常驻后台"]
     C --> F["createTray()<br/>左键 = 截图，右键 = 菜单（退出在菜单里）"]
     C --> G["globalShortcut Ctrl+Shift+A<br/>注册失败只告警，退回按钮 / 托盘"]
@@ -110,13 +110,14 @@ sequenceDiagram
     O->>M: invoke overlay:boot（取本屏截图）
     O->>M: invoke overlay:ready
     M->>O: send overlay:selection（首个 ready 立刻 show + 拿焦点）
-    Note over M,O: 输入分流 — 手型工具或选区外按下 → 主进程；绘图工具且选区内 → 编辑器绘制标注
+    Note over M,O: 输入分流 — 手型工具或选区外按下 → 主进程；绘图工具且选区内 → 编辑器绘制标注（画布捕获指针，拖画可越过屏幕边界继续）
     loop 拖动中每 16ms
         M->>M: screen.getCursorScreenPoint()（光标唯一真相源）
         M->>O: send overlay:selection
         O->>O: 重绘选框 / 手柄 / 尺寸标签 / 浮动工具条
     end
     Note over M: 松手 → phase = adjusting（选区可实时调，工具条同刻出现）
+    Note over M,O: 跨屏标注投影 — 历史变化 invoke overlay:shapes、拖画按帧 invoke overlay:draft；主进程换算成虚拟屏 DIP 后 send overlay:remoteShapes / overlay:remoteDraft 给其余遮罩，各遮罩平移到本屏坐标渲染落在本屏的部分
     alt 钉住
         M->>M: 等 pendingRest（其余屏抓完）
         M->>P: 创建贴图窗（transparent + 阴影留白）
@@ -155,7 +156,7 @@ stateDiagram-v2
 
 ## IPC 通道方向
 
-- **主 → 渲染**（`send`）：`overlay:selection`、`overlay:teardown`、`overlay:compose`、`app:state`
-- **渲染 → 主**（`invoke`）：`overlay:boot`、`overlay:ready`、`overlay:input`、`overlay:tool`、`overlay:action`、`overlay:shapes`、`overlay:editState`、`overlay:focus`、`overlay:copyText`、`overlay:export`、`pin:boot`、`pin:ready`、`pin:action`、`app:startSnip`
+- **主 → 渲染**（`send`）：`overlay:selection`、`overlay:teardown`、`overlay:compose`、`overlay:remoteShapes`、`overlay:remoteDraft`、`app:state`
+- **渲染 → 主**（`invoke`）：`overlay:boot`、`overlay:ready`、`overlay:input`、`overlay:tool`、`overlay:action`、`overlay:shapes`、`overlay:draft`、`overlay:inFlight`、`overlay:editState`、`overlay:focus`、`overlay:copyText`、`overlay:export`、`pin:boot`、`pin:ready`、`pin:action`、`app:startSnip`
 
-共 18 个通道（14 个 `invoke` + 4 个 `send`），全部定义在 `src/shared/channels.ts` —— 任何地方都不允许写字符串字面量。
+共 22 个通道（16 个 `invoke` + 6 个 `send`），全部定义在 `src/shared/channels.ts` —— 任何地方都不允许写字符串字面量。

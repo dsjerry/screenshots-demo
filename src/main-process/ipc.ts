@@ -19,6 +19,8 @@ import {
   onOverlayInput,
   onOverlayReady,
   onOverlayShapes,
+  onOverlayDraft,
+  onOverlayInFlight,
   onOverlayTool,
   onPinBoot,
   ownsPendingPin,
@@ -60,6 +62,14 @@ export function registerIpc(ctx: AppContext): void {
   );
   ipcMain.handle(CH.overlayShapes, (event, payload: { shapes: Shape[] }) =>
     onOverlayShapes(event.sender, payload.shapes),
+  );
+  ipcMain.handle(CH.overlayDraft, (event, payload: { draft: Shape | null }) =>
+    onOverlayDraft(event.sender, payload.draft),
+  );
+  ipcMain.handle(
+    CH.overlayInFlight,
+    (event, payload: { index: number | null }) =>
+      onOverlayInFlight(event.sender, payload.index),
   );
   ipcMain.handle(
     CH.overlayEditState,

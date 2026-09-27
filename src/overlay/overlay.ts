@@ -3,7 +3,7 @@ import { toBlob } from '../shared/bytes';
 import { stitch } from '../shared/stitch';
 import { HANDLE_CURSOR, hitHandleIn, pointInRect } from '../shared/selection';
 import { Editor } from '../annotations/editor';
-import { drawShape } from '../annotations/shapes';
+import { drawDraftPath, drawDraftRect, drawShape } from '../annotations/shapes';
 import { createToolbar } from '../annotations/toolbar';
 import type { ToolbarAction } from '../annotations/toolbar';
 import type {
@@ -13,6 +13,7 @@ import type {
   OverlaySelectionPayload,
   Point,
   Rect,
+  Shape,
 } from '../shared/types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -31,6 +32,12 @@ let cssWidth = 0;
 let cssHeight = 0;
 /** 标注编辑器（与钉图共用同一个类）；null = 尚未初始化 */
 let editor: Editor | null = null;
+/**
+ * 其余屏的已提交标注 / 拖画草稿（虚拟屏 DIP）。本屏只负责渲染落在本屏的
+ * 部分（平移到本窗口坐标后画布自然裁掉出界的），编辑权始终在来源屏。
+ */
+let remoteShapes: Shape[] = [];
+let remoteDraft: Shape | null = null;
 /** 工具条尺寸缓存 —— 每帧读 layout 太贵，而它的尺寸基本不变 */
 let toolbarW = 0;
 let toolbarH = 0;
@@ -57,7 +64,33 @@ function paint(): void {
   if (!shot || !bg) return;
   renderOverlay(ctx, cssWidth, cssHeight, bg, { shot, payload });
   editor?.renderInto(ctx);
+  drawRemote();
   syncToolbar();
+}
+
+/**
+ * 画**其余屏**的标注 / 草稿：远端坐标是虚拟屏 DIP，减去本屏原点即本窗口
+ * 局部坐标。一条标注从 A 屏画到 B 屏时，A 的画布只有 A 的半截，
+ * B 屏这半截就是靠这里补出来的（不广播的话 B 上永远什么都看不见）。
+ */
+function drawRemote(): void {
+  if (!shot || (remoteShapes.length === 0 && !remoteDraft)) return;
+  ctx.save();
+  ctx.translate(-shot.bounds.x, -shot.bounds.y);
+  for (const shape of remoteShapes) drawShape(ctx, shape);
+  // 草稿与编辑器同款画法：马赛克只画半透明预览，松手才像素化
+  if (remoteDraft && remoteDraft.type !== 'text') {
+    if (remoteDraft.type === 'mosaic') {
+      if (remoteDraft.mode === 'region') {
+        drawDraftRect(ctx, remoteDraft.x, remoteDraft.y, remoteDraft.w, remoteDraft.h);
+      } else {
+        drawDraftPath(ctx, remoteDraft.points, remoteDraft.radius);
+      }
+    } else {
+      drawShape(ctx, remoteDraft);
+    }
+  }
+  ctx.restore();
 }
 
 async function decode(png: Uint8Array): Promise<ImageBitmap> {
@@ -307,6 +340,35 @@ function setupAnnotation(): void {
     syncHistory?.();
     void window.api.overlay.shapes({ shapes: instance.getShapes() });
   };
+
+  // 本屏拖画中的草稿实时投影到其余屏。pointermove 每帧都变，按帧合并成
+  // 一条 IPC；结束（null）则立即发 —— 要赶在提交触发的「已提交标注」
+  // 广播前面，其余屏才不会把新标注和过期草稿叠着画一帧。
+  let draftRaf: number | null = null;
+  let draftLatest: Shape | null = null;
+  instance.onDraftChange = (draft) => {
+    if (draft === null) {
+      if (draftRaf !== null) {
+        cancelAnimationFrame(draftRaf);
+        draftRaf = null;
+      }
+      void window.api.overlay.draft({ draft: null });
+      return;
+    }
+    draftLatest = draft;
+    if (draftRaf !== null) return;
+    draftRaf = requestAnimationFrame(() => {
+      draftRaf = null;
+      void window.api.overlay.draft({ draft: draftLatest });
+    });
+  };
+
+  // 拖动 / 缩放既有标注：把在途下标报给主进程 —— 它对内仍存全量快照
+  //（导出 / 钉图用），只对其余遮罩广播时滤掉这条，其余屏改画拖动副本
+  //（onDraftChange 投影）；结束时恢复全量，提交的历史广播再覆盖成新位置。
+  instance.onInFlightChange = (index) => {
+    void window.api.overlay.inFlight({ index });
+  };
 }
 
 /**
@@ -370,6 +432,8 @@ async function main(): Promise<void> {
     // 窗口留着复用，但截图位图和解码后的位图都不能再占着内存
     payload = null;
     shot = null;
+    remoteShapes = [];
+    remoteDraft = null;
     if (bg) {
       bg.close();
       bg = null;
@@ -378,6 +442,18 @@ async function main(): Promise<void> {
     toolbarEl.hidden = true;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+  });
+
+  // 其余屏的标注 / 草稿广播：只更新远端状态并重绘，不参与编辑
+  window.api.overlay.remoteShapes(({ fromDisplayId, shapes }) => {
+    if (!shot || fromDisplayId === shot.displayId) return;
+    remoteShapes = shapes;
+    paint();
+  });
+  window.api.overlay.remoteDraft(({ fromDisplayId, draft }) => {
+    if (!shot || fromDisplayId === shot.displayId) return;
+    remoteDraft = draft;
+    paint();
   });
 
   // 复制 / 保存：主进程把合成数据推过来，本窗口就地拼图后回传 PNG
@@ -391,10 +467,6 @@ async function main(): Promise<void> {
 
 // ---------------------------------------------------------------- 放大镜
 
-/**
- * 放大镜尺寸 —— **唯一来源**：backing store 与 CSS 尺寸都由它决定
- * （`sizeMagnifier()` 写入 `--mag-w` / `--mag-h`，CSS 只取变量）。
- *
 /**
  * 放大镜画布尺寸 —— **唯一来源**：backing store 与 CSS 尺寸都由它决定
  * （`sizeMagnifier()` 写入 `--mag-w` / `--mag-h`，CSS 只取变量）。

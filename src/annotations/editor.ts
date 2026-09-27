@@ -96,10 +96,23 @@ export class Editor {
   private pxScale = 1;
   /** 当前活跃的文字输入框提交函数；同时只允许一个 */
   private closeActiveText: (() => void) | null = null;
+  /** 已 setPointerCapture 的指针；null = 未捕获 */
+  private capturedPointer: number | null = null;
 
   onToolChange?: (tool: ToolId) => void;
   /** 每次撤销 / 重做 / 新增 / 删除 / 清空 / 改色 / 落盘调整后触发 */
   onHistoryChange?: () => void;
+  /**
+   * 拖画中的草稿变化（含结束时的 null）。遮罩用它把草稿实时投影到
+   * 其余屏 —— 否则标注画过屏幕边界时，另一块屏上永远看不到。
+   */
+  onDraftChange?: (draft: Shape | null) => void;
+  /**
+   * 拖动 / 缩放**既有**标注的在途状态：开始时给它在已提交列表里的下标，
+   * 结束时给 null。宿主据此先广播「去掉它」的快照、再把拖动副本当草稿
+   * 投影 —— 否则其余屏在拖动期间会旧位、新位叠着画两份。
+   */
+  onInFlightChange?: (index: number | null) => void;
 
   constructor(canvas: HTMLCanvasElement, textEditor: HTMLTextAreaElement, opts: EditorOptions) {
     this.canvas = canvas;
@@ -233,6 +246,7 @@ export class Editor {
     this.beginChange();
     this.shapes = [];
     this.selected = null;
+    if (this.draft) this.onDraftChange?.(null);
     this.draft = null;
     this.penPoints = [];
     this.onHistoryChange?.();
@@ -408,6 +422,7 @@ export class Editor {
   }
 
   private resetInteraction(): void {
+    if (this.draft) this.onDraftChange?.(null);
     this.mode = null;
     this.draft = null;
     this.penPoints = [];
@@ -416,6 +431,38 @@ export class Editor {
     this.editOrigin = null;
     this.editStart = null;
     this.editHandle = null;
+  }
+
+  /**
+   * 按下后捕获指针：多屏截图时每块屏是**独立窗口**，不捕获的话指针一移进
+   * 邻屏窗口，本窗口就再也收不到 pointermove / pointerup —— 草稿停在屏幕
+   * 边界，松手落空。捕获后 OS 会把整次拖动的鼠标消息都路由给本窗口，
+   * 坐标出界（负值或超出窗口宽高）也照常送达。
+   */
+  private capturePointer(event: PointerEvent): void {
+    try {
+      this.canvas.setPointerCapture(event.pointerId);
+      this.capturedPointer = event.pointerId;
+    } catch {
+      // 指针已失效等场景：拖动退化成「只在窗口内」的原有行为
+      this.capturedPointer = null;
+    }
+  }
+
+  private releasePointer(): void {
+    if (this.capturedPointer === null) return;
+    try {
+      this.canvas.releasePointerCapture(this.capturedPointer);
+    } catch {
+      // pointerup 后浏览器已隐式释放，忽略即可
+    }
+    this.capturedPointer = null;
+  }
+
+  /** 拖动 / 缩放开始：把在途标注的下标交给宿主（遮罩据此投影到其余屏）。 */
+  private beginInFlight(shape: Shape): void {
+    const idx = this.shapes.indexOf(shape);
+    if (idx >= 0) this.onInFlightChange?.(idx);
   }
 
   // ------------------------------------------------------------ 指针
@@ -431,11 +478,13 @@ export class Editor {
       const handle = this.selected ? this.hitSelectedHandle(p) : null;
       if (handle && this.selected) {
         this.mode = 'handle';
+        this.capturePointer(event);
         this.editingOf = this.selected;
         this.editOrigin = cloneShape(this.selected);
         this.editStart = p;
         this.editHandle = handle;
         this.editing = cloneShape(this.selected);
+        this.beginInFlight(this.selected);
         return;
       }
 
@@ -444,11 +493,13 @@ export class Editor {
       if (hit) {
         this.select(hit);
         this.mode = 'move';
+        this.capturePointer(event);
         this.editingOf = hit;
         this.editOrigin = cloneShape(hit);
         this.editStart = p;
         this.editHandle = null;
         this.editing = cloneShape(hit);
+        this.beginInFlight(hit);
         this.render();
         return;
       }
@@ -465,6 +516,7 @@ export class Editor {
       }
 
       this.mode = 'draw';
+      this.capturePointer(event);
       this.penPoints = [p];
 
       if (this.current === 'arrow') {
@@ -520,6 +572,8 @@ export class Editor {
         if (!this.editing || !this.editOrigin || !this.editStart) return;
         this.editing = translateShape(this.editOrigin, p.x - this.editStart.x, p.y - this.editStart.y);
         this.render();
+        // 拖动副本当草稿投影：其余屏才能实时跟上新位置
+        this.onDraftChange?.(this.editing);
         return;
       }
 
@@ -527,6 +581,7 @@ export class Editor {
         if (!this.editing || !this.editOrigin || !this.editHandle) return;
         this.editing = applyShapeHandle(this.editOrigin, this.editHandle, p, this.ctx);
         this.render();
+        this.onDraftChange?.(this.editing);
         return;
       }
 
@@ -553,20 +608,26 @@ export class Editor {
         }
       }
       this.render();
+      this.onDraftChange?.(this.draft);
     });
 
     const finish = () => {
       const mode = this.mode;
       if (!mode) return;
+      this.releasePointer();
 
       if (mode === 'draw') {
         this.mode = null;
-        if (this.draft && !this.tooSmall(this.draft)) {
-          this.commit(this.draft);
-          console.log(`[editor] 新增标注 type=${this.draft.type} 总数=${this.shapes.length}`);
-        }
+        const finished = this.draft;
         this.draft = null;
         this.penPoints = [];
+        // 先结束草稿再提交：其余屏按这个顺序处理，不会出现
+        // 「已提交的标注」和「过期草稿」叠着画一帧
+        this.onDraftChange?.(null);
+        if (finished && !this.tooSmall(finished)) {
+          this.commit(finished);
+          console.log(`[editor] 新增标注 type=${finished.type} 总数=${this.shapes.length}`);
+        }
         this.render();
         return;
       }
@@ -575,6 +636,10 @@ export class Editor {
       this.mode = null;
       const changed =
         this.editing && this.editOrigin && JSON.stringify(this.editing) !== JSON.stringify(this.editOrigin);
+      // 先收草稿、再复位在途（宿主恢复全量快照）；提交的历史广播随后
+      // 把新位置覆盖出去 —— 其余屏按这个顺序收敛，不会叠画两份
+      this.onDraftChange?.(null);
+      this.onInFlightChange?.(null);
       if (changed && this.editingOf) {
         this.beginChange();
         const idx = this.shapes.indexOf(this.editingOf);

@@ -3,6 +3,8 @@ import type {
   OverlayComposePayload,
   OverlayInitPayload,
   OverlayInput,
+  OverlayRemoteDraftPayload,
+  OverlayRemoteShapesPayload,
   OverlaySelectionPayload,
   OverlayTeardownPayload,
   PinAction,
@@ -27,6 +29,14 @@ export interface ScreenshotsApi {
     action(payload: { kind: OverlayActionKind }): Promise<void>;
     /** 把本屏标注（本屏 DIP 坐标）回传，仅在历史变化时调 */
     shapes(payload: { shapes: Shape[] }): Promise<void>;
+    /** 把本屏正在拖画的草稿（本屏 DIP 坐标）回传，主进程换算后投影到其余屏 */
+    draft(payload: { draft: Shape | null }): Promise<void>;
+    /** 本屏正在拖动 / 缩放的标注下标（null = 结束）；主进程广播时把它滤掉 */
+    inFlight(payload: { index: number | null }): Promise<void>;
+    /** 其余屏已提交的标注（虚拟屏 DIP），本屏只负责渲染落在本屏的部分 */
+    remoteShapes(cb: (payload: OverlayRemoteShapesPayload) => void): () => void;
+    /** 其余屏正在拖画的草稿（虚拟屏 DIP）；draft 为 null 表示草稿结束 */
+    remoteDraft(cb: (payload: OverlayRemoteDraftPayload) => void): () => void;
     /** 文字输入框开合，主进程据此决定要不要接管 Enter / Esc */
     editState(payload: { textEditing: boolean }): Promise<void>;
     /** 把本遮罩提到前台（光标移到哪块屏，键盘事件就归哪块屏） */

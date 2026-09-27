@@ -91,6 +91,31 @@ export interface OverlayTeardownPayload {
   reason: 'confirm' | 'cancel';
 }
 
+/**
+ * 主进程广播给**其余遮罩**的跨屏标注（来源屏已提交的全部标注）。
+ * 坐标已换算成虚拟屏 DIP —— 接收方减去自己那块屏的原点就是本窗口局部坐标。
+ */
+export interface OverlayRemoteShapesPayload {
+  /** 来源屏的 displayId，接收方据此过滤自己 */
+  fromDisplayId: number;
+  shapes: Shape[];
+}
+
+/** 其余遮罩正在拖画的草稿（虚拟屏 DIP）；`draft` 为 null 表示草稿已结束。 */
+export interface OverlayRemoteDraftPayload {
+  fromDisplayId: number;
+  draft: Shape | null;
+}
+
+/**
+ * 本屏正在被拖动 / 缩放的标注下标（null = 拖动结束）。主进程对内仍存
+ * 全量快照（导出 / 钉图用），只在对其余遮罩广播时把它滤掉 —— 其余屏
+ * 改画拖动副本，不会旧位、新位叠着两份。
+ */
+export interface OverlayInFlightPayload {
+  index: number | null;
+}
+
 export interface PinInitPayload {
   shots: DisplayShot[];
   selection: Rect;

@@ -28,6 +28,8 @@ import type {
   OverlayComposePayload,
   OverlayInitPayload,
   OverlayInput,
+  OverlayRemoteDraftPayload,
+  OverlayRemoteShapesPayload,
   OverlaySelectionPayload,
   PinActionResult,
   PinInitPayload,
@@ -80,6 +82,8 @@ interface Session {
   editText: Set<number>;
   /** webContents.id -> 本屏 DIP 坐标的标注，确认时统一换算成图像像素 */
   shapesByContents: Map<number, Shape[]>;
+  /** webContents.id -> 正被拖动 / 缩放的标注下标（null = 无）；广播给其余屏时滤掉 */
+  inFlightByContents: Map<number, number | null>;
 }
 
 export interface SnipHooks {
@@ -382,6 +386,7 @@ export async function beginSnip(): Promise<void> {
     activeTool: 'hand',
     editText: new Set(),
     shapesByContents: new Map(),
+    inFlightByContents: new Map(),
   };
 
   spawnOverlays(primaryShots);
@@ -464,6 +469,19 @@ export function onOverlayReady(sender: WebContents): void {
   }
   // 迟到的窗口要能立刻拿到当前选区状态
   broadcast();
+  // 再补发其余屏**已提交**的标注 —— 那些广播发生在本窗口订阅之前，
+  // 错过了就永远看不到（A 屏先画完、B 屏遮罩才加载完就是这种顺序）
+  for (const contentsId of s.shapesByContents.keys()) {
+    if (contentsId === sender.id) continue;
+    const shot = s.shotByContents.get(contentsId);
+    if (!shot) continue;
+    win.webContents.send(CH.overlayRemoteShapes, {
+      fromDisplayId: shot.displayId,
+      shapes: visibleRemoteShapes(s, contentsId).map((shape) =>
+        mapShape(shape, shot.bounds.x, shot.bounds.y, 1),
+      ),
+    });
+  }
 }
 
 function overlayAtCursor(): BrowserWindow | null {
@@ -659,6 +677,77 @@ export function onOverlayShapes(sender: WebContents, shapes: Shape[]): void {
   const s = session;
   if (!s) return;
   s.shapesByContents.set(sender.id, shapes);
+  broadcastRemoteShapes(s, sender.id);
+}
+
+/** 遮罩回传本屏拖画中的草稿（本屏 DIP）。拖画期间按帧合并成一条。 */
+export function onOverlayDraft(sender: WebContents, draft: Shape | null): void {
+  const s = session;
+  if (!s) return;
+  broadcastRemoteDraft(s, sender.id, draft);
+}
+
+/**
+ * 遮罩回传本屏正在拖动 / 缩放的标注下标。主进程**照存全量快照**
+ * （导出 / 钉图用它，无需兜底），只在对其余遮罩广播时把这条滤掉，
+ * 其余屏改画拖动副本 —— 不滤的话旧位、新位会叠着画两份。
+ */
+export function onOverlayInFlight(
+  sender: WebContents,
+  index: number | null,
+): void {
+  const s = session;
+  if (!s) return;
+  s.inFlightByContents.set(sender.id, index);
+  broadcastRemoteShapes(s, sender.id);
+}
+
+/** 某个遮罩当前应被其余屏看到的标注：全量快照滤掉拖动中的那条。 */
+function visibleRemoteShapes(s: Session, contentsId: number): Shape[] {
+  const shapes = s.shapesByContents.get(contentsId) ?? [];
+  const inFlight = s.inFlightByContents.get(contentsId);
+  // 0 也是合法下标，判空必须用 != null
+  return inFlight != null ? shapes.filter((_, i) => i !== inFlight) : shapes;
+}
+
+/**
+ * 把某个遮罩的本屏标注换算成虚拟屏 DIP 并广播给**其余遮罩**。
+ *
+ * 一条标注从 A 屏画到 B 屏时，A 的窗口只会画出落在 A 的半截，
+ * B 屏那半截得靠 B 自己的遮罩补出来 —— 每块屏一个窗口、画布互相独立，
+ * 不广播的话 B 永远是空的。接收方减去自己那块屏的原点即是局部坐标。
+ */
+function broadcastRemoteShapes(s: Session, senderId: number): void {
+  const shot = s.shotByContents.get(senderId);
+  if (!shot) return;
+  const payload: OverlayRemoteShapesPayload = {
+    fromDisplayId: shot.displayId,
+    shapes: visibleRemoteShapes(s, senderId).map((shape) =>
+      mapShape(shape, shot.bounds.x, shot.bounds.y, 1),
+    ),
+  };
+  for (const win of s.overlays) {
+    if (win.isDestroyed() || win.webContents.id === senderId) continue;
+    win.webContents.send(CH.overlayRemoteShapes, payload);
+  }
+}
+
+/** 同上，但走的是草稿通道；`draft` 为 null 表示来源屏的草稿已结束。 */
+function broadcastRemoteDraft(
+  s: Session,
+  senderId: number,
+  draft: Shape | null,
+): void {
+  const shot = s.shotByContents.get(senderId);
+  if (!shot) return;
+  const payload: OverlayRemoteDraftPayload = {
+    fromDisplayId: shot.displayId,
+    draft: draft ? mapShape(draft, shot.bounds.x, shot.bounds.y, 1) : null,
+  };
+  for (const win of s.overlays) {
+    if (win.isDestroyed() || win.webContents.id === senderId) continue;
+    win.webContents.send(CH.overlayRemoteDraft, payload);
+  }
 }
 
 /** 文字输入框开合 —— 打字时 Enter / Esc 交给渲染进程，别被会话吃掉。 */
