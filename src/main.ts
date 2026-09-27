@@ -63,12 +63,24 @@ function showMainWindow(): void {
   mainWindow?.focus();
 }
 
+// 单实例锁：双开会出现两个托盘图标、两份全局快捷键。拿不到锁说明已有
+// 实例在跑 —— 那边会收到 second-instance 并弹出主窗口，这边直接退出。
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => showMainWindow());
+}
+
 function broadcastAppState(snipping: boolean): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(CH.appState, { snipping });
 }
 
 app.whenReady().then(() => {
+  // 双开的那个实例：等待退出的过程中不再创建任何窗口 / 托盘
+  if (!gotLock) return;
+
   registerIpc({
     isMainWindow: (win) => win === mainWindow,
     broadcastAppState,

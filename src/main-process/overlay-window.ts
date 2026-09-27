@@ -57,6 +57,15 @@ export function createOverlayWindow(
   // 遮罩自身不能被别的截图工具截进去（Win10 build 19044 支持 WDA_EXCLUDEFROMCAPTURE）
   win.setContentProtection(true);
   forwardRendererLogs(win, `overlay:${shot.displayId}`);
+  // 渲染进程崩溃 / 无响应时遮罩会「卡死在屏幕上」，没有这行日志就只能瞎猜
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error(
+      `[overlay:${shot.displayId}] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`,
+    );
+  });
+  win.on('unresponsive', () => {
+    console.warn(`[overlay:${shot.displayId}] 窗口无响应`);
+  });
 
   const contentsId = win.webContents.id;
 

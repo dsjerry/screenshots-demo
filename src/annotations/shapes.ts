@@ -25,6 +25,20 @@ function normRect(x: number, y: number, w: number, h: number): { x: number; y: n
 }
 
 /**
+ * 画布在**当前变换下**的可见尺寸（DIP / CSS px）。
+ *
+ * 标注坐标单位跟随 ctx 的变换：遮罩把 ctx 缩放到 dpr，钉图 / 导出是恒等。
+ * `ctx.canvas.width/height` 是 backing 像素，直接拿来钳制坐标在 dpr≠1 时
+ * 会差一个 dpr 倍数 —— 必须先除回去。
+ */
+function canvasSizeIn(ctx: CanvasRenderingContext2D): { w: number; h: number } {
+  const t = ctx.getTransform();
+  const kx = Math.abs(t.a) || 1;
+  const ky = Math.abs(t.d) || 1;
+  return { w: Math.floor(ctx.canvas.width / kx), h: Math.floor(ctx.canvas.height / ky) };
+}
+
+/**
  * 顺序回放单个 shape。调用时画布上已经是「底图 + 前面所有 shape」，
  * 这正是马赛克需要的语义 —— 它盖住的是**它下面的合成结果**，
  * 所以能一并糊掉更早画上去的箭头。
@@ -175,11 +189,13 @@ export function measureTextBlock(
 }
 
 /**
- * 把 `ctx` 上 [rx,ry,rw,rh] 区域像素化，返回承载结果的 scratch 画布
- * （内容与区域左上角对齐，尺寸 rw×rh）。
+ * 把 `ctx` 上 [rx,ry,rw,rh] 区域（**当前变换下的坐标**）像素化，返回承载结果
+ * 的 scratch 画布（内容与区域左上角对齐，尺寸 rw×rh）。
  *
  * 关键是**降的时候开平滑、升的时候关平滑** —— 反过来就只会得到模糊而不是色块。
  * 快照必须先做：不能把 canvas 画到自己身上。
+ * 另外取样源矩形是 `drawImage` 的**源坐标**，不吃 ctx 变换 —— 遮罩的 ctx
+ * 带 dpr 缩放，必须先乘回去，否则高 DPI 屏上糊的是错位一半的区域。
  */
 function pixelatedRegion(
   ctx: CanvasRenderingContext2D,
@@ -192,12 +208,16 @@ function pixelatedRegion(
   const cols = Math.max(1, Math.round(rw / blockTarget));
   const rows = Math.max(1, Math.round(rh / blockTarget));
 
+  const t = ctx.getTransform();
+  const kx = t.a || 1;
+  const ky = t.d || 1;
+
   const snap = getScratch('snap', rw, rh);
   const sctx = snap.getContext('2d');
   if (!sctx) return null;
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.clearRect(0, 0, rw, rh);
-  sctx.drawImage(ctx.canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+  sctx.drawImage(ctx.canvas, rx * kx, ry * ky, rw * kx, rh * ky, 0, 0, rw, rh);
 
   const tmp = getScratch('tmp', cols, rows);
   const tctx = tmp.getContext('2d');
@@ -220,10 +240,11 @@ function pixelatedRegion(
 
 /** 选区式马赛克：拖出来的矩形整体像素化。 */
 function mosaic(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  const size = canvasSizeIn(ctx);
   const rx = Math.max(0, Math.round(x));
   const ry = Math.max(0, Math.round(y));
-  const rw = Math.min(Math.round(w), ctx.canvas.width - rx);
-  const rh = Math.min(Math.round(h), ctx.canvas.height - ry);
+  const rw = Math.min(Math.round(w), size.w - rx);
+  const rh = Math.min(Math.round(h), size.h - ry);
   if (rw < 1 || rh < 1) return;
 
   const blockTarget = Math.min(40, Math.max(6, Math.round(Math.min(rw, rh) / 14)));
@@ -255,10 +276,11 @@ function mosaicBrush(ctx: CanvasRenderingContext2D, points: Point[], radius: num
     if (p.x + r > maxX) maxX = p.x + r;
     if (p.y + r > maxY) maxY = p.y + r;
   }
+  const size = canvasSizeIn(ctx);
   const rx = Math.max(0, Math.floor(minX));
   const ry = Math.max(0, Math.floor(minY));
-  const rw = Math.min(ctx.canvas.width, Math.ceil(maxX)) - rx;
-  const rh = Math.min(ctx.canvas.height, Math.ceil(maxY)) - ry;
+  const rw = Math.min(size.w, Math.ceil(maxX)) - rx;
+  const rh = Math.min(size.h, Math.ceil(maxY)) - ry;
   if (rw < 1 || rh < 1) return;
 
   // 色块尺寸跟着笔刷半径走，比按区域尺寸推算更均匀
@@ -423,13 +445,16 @@ export function isShapeHit(canvas: HTMLCanvasElement, shape: Shape, p: Point, to
   const h = y1 - y0;
   if (w <= 0 || h <= 0) return false;
 
-  const hit = getScratch('hit', canvas.width, canvas.height);
+  // 检测画布只开**检测框**那么大，再把图形平移进来 —— 按 canvas 全尺寸开
+  // 的话，4K 屏上这是一个 33MB 的 scratch，每个窗口各挂一份到进程退出。
+  const hit = getScratch('hit', w, h);
   const hctx = hit.getContext('2d');
   if (!hctx) return false;
-  hctx.setTransform(1, 0, 0, 1, 0, 0);
-  hctx.clearRect(x0, y0, w, h);
+  hctx.setTransform(1, 0, 0, 1, -x0, -y0);
+  hctx.clearRect(0, 0, w, h);
   drawShape(hctx, shape);
-  const { data } = hctx.getImageData(x0, y0, w, h);
+  hctx.setTransform(1, 0, 0, 1, 0, 0);
+  const { data } = hctx.getImageData(0, 0, w, h);
   for (let i = 3; i < data.length; i += 4) {
     if (data[i] !== 0) return true;
   }
