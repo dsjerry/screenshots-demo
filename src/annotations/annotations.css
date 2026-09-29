@@ -29,15 +29,30 @@
   font-size: 12px;
   line-height: 26px;
   cursor: pointer;
+  /* 图标按钮居中，文字按钮（字号）也跟着受益 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 组与组的分隔线：group 已展平，改画在每组第一个按钮上（每行第一组不留线）。
-   两行式是横排，分隔线画在按钮左侧。 */
-.toolbar button.is-group-start {
+/* 内联 SVG 图标：跟随文字色 / 激活色（currentColor） */
+.toolbar button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* 组与组的分隔线：group 已展平，改画在每组第一个控件上（每行第一组不留线）。
+   两行式是横排，分隔线画在控件左侧。 */
+.toolbar button.is-group-start,
+.toolbar select.is-group-start,
+.toolbar input[type='range'].is-group-start {
   margin-left: 10px;
 }
 
-.toolbar button.is-group-start::after {
+.toolbar button.is-group-start::after,
+.toolbar select.is-group-start::after,
+.toolbar input[type='range'].is-group-start::after {
   content: '';
   position: absolute;
   left: -5px;
@@ -96,15 +111,53 @@
   border-color: rgba(0, 0, 0, 0.35);
 }
 
-.toolbar .stroke {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ---------------- 下拉 / 滑杆 ---------------- */
+
+/* 下拉：与按钮同一套暗色外观；color-scheme 让原生弹层也走暗色 */
+.toolbar select {
+  position: relative;
+  height: 28px;
+  padding: 0 2px 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #d7dade;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color-scheme: dark;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.toolbar select:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 原生弹层里的选项：Windows Chromium 认 option 的 background/color，
+   与 nativeTheme dark 一起保证弹层不是白底 */
+.toolbar select option {
+  background: #1f2126;
   color: #d7dade;
 }
 
-.toolbar .stroke.is-active {
-  color: #ffffff;
+/* 线宽滑杆 + 右侧即时数值 */
+.toolbar input[type='range'] {
+  position: relative;
+  width: 88px;
+  height: 28px;
+  margin: 0;
+  accent-color: #2f6fed;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.toolbar .width-val {
+  min-width: 18px;
+  text-align: center;
+  color: #d7dade;
+  font-size: 12px;
 }
 
 /* ---------------- 文字输入 ---------------- */

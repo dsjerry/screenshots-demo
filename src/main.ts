@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from 'electron';
+import { app, BrowserWindow, globalShortcut, nativeTheme } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { CH } from './shared/channels';
@@ -80,6 +80,11 @@ function broadcastAppState(snipping: boolean): void {
 app.whenReady().then(() => {
   // 双开的那个实例：等待退出的过程中不再创建任何窗口 / 托盘
   if (!gotLock) return;
+
+  // 全应用是固定暗色 UI：原生控件的弹层（select 下拉菜单等）跟系统
+  // prefers-color-scheme 走，浅色系统的 Windows 上会渲染成白底 ——
+  // 强制声明 dark，弹层才是暗色。
+  nativeTheme.themeSource = 'dark';
 
   registerIpc({
     isMainWindow: (win) => win === mainWindow,

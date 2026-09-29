@@ -101,6 +101,17 @@ export function moveRect(origin: Rect, start: Point, cursor: Point): Rect {
   };
 }
 
+/**
+ * 把矩形夹回边界内 —— 选区的「窗体碰撞」：拖动 / 调整时越出虚拟桌面
+ * 的部分贴边停住，光标继续走选区也不动，往回拖立刻恢复跟随。
+ * （选区比边界还宽的退化情形下贴左 / 上边，正常光标操作到不了这一步。）
+ */
+export function clampRect(rect: Rect, bounds: Rect): Rect {
+  const x = Math.max(bounds.x, Math.min(rect.x, bounds.x + bounds.width - rect.width));
+  const y = Math.max(bounds.y, Math.min(rect.y, bounds.y + bounds.height - rect.height));
+  return { ...rect, x, y };
+}
+
 /** 拖动手柄调整：对侧的边固定，被拖的边/角跟着光标走，允许反向拖动翻转。 */
 export function resizeRect(
   origin: Rect,

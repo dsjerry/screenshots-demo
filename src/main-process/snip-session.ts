@@ -16,6 +16,7 @@ import {
 } from '../shared/pin-layout';
 import type { PinPadding } from '../shared/pin-layout';
 import {
+  clampRect,
   hitHandle,
   moveRect,
   pointInRect,
@@ -307,17 +308,18 @@ function startPoll(s: Session): void {
   }, 16);
 }
 
-/** 每帧按当前模式用光标真相源重算选区。 */
+/** 每帧按当前模式用光标真相源重算选区；移动 / 调整夹回虚拟桌面（碰撞）。 */
 function applyDrag(s: Session): void {
   const mode = s.mode;
   if (!mode) return;
   const cur = screen.getCursorScreenPoint();
   if (mode.kind === 'new') {
+    // 重新框选的两端都是光标，天然落在桌面内，无需夹取
     s.selection = rectFrom(mode.anchor, cur);
   } else if (mode.kind === 'move') {
-    s.selection = moveRect(mode.origin, mode.start, cur);
+    s.selection = clampRect(moveRect(mode.origin, mode.start, cur), s.virtualBounds);
   } else {
-    s.selection = resizeRect(mode.origin, mode.handle, cur);
+    s.selection = clampRect(resizeRect(mode.origin, mode.handle, cur), s.virtualBounds);
   }
 }
 

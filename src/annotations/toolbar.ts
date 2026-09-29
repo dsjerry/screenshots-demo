@@ -2,6 +2,25 @@ import type { Editor } from './editor';
 import type { ArrowHead, MosaicMode, ToolId } from '../shared/types';
 import './annotations.css';
 
+// 图标来自 lucide（MIT），经 Vite 的 ?raw 以 SVG 字符串进包 —— 只打进
+// 用到的这十几个，无运行时依赖、无字体加载，内联 SVG 也不受 CSP 限制。
+import handSvg from 'lucide-static/icons/hand.svg?raw';
+import arrowUpRightSvg from 'lucide-static/icons/arrow-up-right.svg?raw';
+import squareSvg from 'lucide-static/icons/square.svg?raw';
+import circleSvg from 'lucide-static/icons/circle.svg?raw';
+import pencilSvg from 'lucide-static/icons/pencil.svg?raw';
+import grid3x3Svg from 'lucide-static/icons/grid-3x3.svg?raw';
+import typeSvg from 'lucide-static/icons/type.svg?raw';
+import undo2Svg from 'lucide-static/icons/undo-2.svg?raw';
+import redo2Svg from 'lucide-static/icons/redo-2.svg?raw';
+import trash2Svg from 'lucide-static/icons/trash-2.svg?raw';
+import copySvg from 'lucide-static/icons/copy.svg?raw';
+import saveSvg from 'lucide-static/icons/save.svg?raw';
+import xSvg from 'lucide-static/icons/x.svg?raw';
+import pinSvg from 'lucide-static/icons/pin.svg?raw';
+import squareDashedSvg from 'lucide-static/icons/square-dashed.svg?raw';
+import brushSvg from 'lucide-static/icons/brush.svg?raw';
+
 const TOOL_LABELS: Record<ToolId, string> = {
   hand: '移动',
   arrow: '箭头',
@@ -12,6 +31,25 @@ const TOOL_LABELS: Record<ToolId, string> = {
   text: '文字',
 };
 
+/** 工具图标，键与 TOOL_LABELS 一一对应 */
+const TOOL_ICONS: Record<ToolId, string> = {
+  hand: handSvg,
+  arrow: arrowUpRightSvg,
+  rect: squareSvg,
+  ellipse: circleSvg,
+  pen: pencilSvg,
+  mosaic: grid3x3Svg,
+  text: typeSvg,
+};
+
+/** 动作按钮图标；没映射到的 id 退化为文字按钮（label 仍作 title） */
+const ACTION_ICONS: Record<string, string> = {
+  copy: copySvg,
+  save: saveSvg,
+  cancel: xSvg,
+  pin: pinSvg,
+};
+
 const ARROW_HEAD_LABELS: Record<ArrowHead, string> = {
   solid: '实心',
   open: '空心',
@@ -20,6 +58,12 @@ const ARROW_HEAD_LABELS: Record<ArrowHead, string> = {
 const MOSAIC_MODE_LABELS: Record<MosaicMode, string> = {
   region: '选区',
   brush: '涂抹',
+};
+
+/** 马赛克绘制形式的图标：拖矩形 = 虚线框，涂抹 = 笔刷 */
+const MOSAIC_MODE_ICONS: Record<MosaicMode, string> = {
+  region: squareDashedSvg,
+  brush: brushSvg,
 };
 
 /**
@@ -72,7 +116,7 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
 
   const tools = group();
   for (const id of editor.toolIds) {
-    const btn = button(TOOL_LABELS[id]);
+    const btn = iconButton(TOOL_ICONS[id], TOOL_LABELS[id]);
     btn.dataset.tool = id;
     btn.classList.toggle('is-active', id === editor.currentTool);
     btn.addEventListener('click', () => {
@@ -88,6 +132,7 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
     btn.className = 'swatch';
     btn.style.background = c;
     btn.dataset.color = c;
+    btn.title = c;
     if (c === '#ffffff') btn.classList.add('is-light');
     btn.addEventListener('click', () => {
       editor.setColor(c);
@@ -96,51 +141,58 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
     colors.append(btn);
   }
 
+  // 线宽：滑动条连续调节，右侧即时数值。划动期间 editor.setWidth
+  // 只改工具状态不进历史，与原按钮一致。
   const widths = group();
-  for (const w of editor.widths) {
-    const btn = button('');
-    btn.className = 'stroke';
-    btn.dataset.width = String(w);
-    const dot = document.createElement('span');
-    dot.style.height = `${Math.min(w, 8)}px`;
-    dot.style.width = '18px';
-    dot.style.background = 'currentColor';
-    dot.style.borderRadius = '99px';
-    btn.append(dot);
-    btn.addEventListener('click', () => {
-      editor.setWidth(w);
-      syncActive();
-    });
-    widths.append(btn);
-  }
+  const widthRange = document.createElement('input');
+  widthRange.type = 'range';
+  widthRange.min = String(editor.widthMin);
+  widthRange.max = String(editor.widthMax);
+  widthRange.step = '1';
+  widthRange.title = `线宽 ${editor.widthValue}`;
+  const widthVal = document.createElement('span');
+  widthVal.className = 'width-val';
+  widthRange.addEventListener('input', () => {
+    const v = Number(widthRange.value);
+    editor.setWidth(v);
+    widthVal.textContent = String(v);
+    widthRange.title = `线宽 ${v}`;
+  });
+  widths.append(widthRange, widthVal);
 
+  // 箭头形状：下拉（实心 / 空心）
   const heads = group();
+  const headSelect = document.createElement('select');
+  headSelect.title = '箭头形状';
   for (const h of editor.arrowHeads) {
-    const btn = button(ARROW_HEAD_LABELS[h]);
-    btn.dataset.head = h;
-    btn.classList.toggle('is-active', h === editor.arrowHeadValue);
-    btn.addEventListener('click', () => {
-      editor.setArrowHead(h);
-      syncActive();
-    });
-    heads.append(btn);
+    const opt = document.createElement('option');
+    opt.value = h;
+    opt.textContent = ARROW_HEAD_LABELS[h];
+    headSelect.append(opt);
   }
+  headSelect.addEventListener('change', () => {
+    editor.setArrowHead(headSelect.value as ArrowHead);
+  });
+  heads.append(headSelect);
 
+  // 字号：下拉
   const sizes = group();
+  const sizeSelect = document.createElement('select');
+  sizeSelect.title = '字号';
   for (const n of editor.fontSizes) {
-    const btn = button(String(n));
-    btn.dataset.size = String(n);
-    btn.classList.toggle('is-active', n === editor.fontSizeValue);
-    btn.addEventListener('click', () => {
-      editor.setFontSize(n);
-      syncActive();
-    });
-    sizes.append(btn);
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = String(n);
+    sizeSelect.append(opt);
   }
+  sizeSelect.addEventListener('change', () => {
+    editor.setFontSize(Number(sizeSelect.value));
+  });
+  sizes.append(sizeSelect);
 
   const modes = group();
   for (const m of editor.mosaicModes) {
-    const btn = button(MOSAIC_MODE_LABELS[m]);
+    const btn = iconButton(MOSAIC_MODE_ICONS[m], MOSAIC_MODE_LABELS[m]);
     btn.dataset.mode = m;
     btn.classList.toggle('is-active', m === editor.mosaicModeValue);
     btn.addEventListener('click', () => {
@@ -151,11 +203,11 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
   }
 
   const history = group();
-  const undo = button('撤销');
+  const undo = iconButton(undo2Svg, '撤销');
   undo.addEventListener('click', () => editor.undo());
-  const redo = button('重做');
+  const redo = iconButton(redo2Svg, '重做');
   redo.addEventListener('click', () => editor.redo());
-  const clear = button('清空');
+  const clear = iconButton(trash2Svg, '清空');
   clear.addEventListener('click', () => editor.clear());
   history.append(undo, redo, clear);
 
@@ -163,8 +215,10 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
   const byId = new Map<string, HTMLButtonElement>();
   const extras = opts.actions ?? [];
   for (const spec of extras) {
-    const btn = button(spec.label);
+    const icon = ACTION_ICONS[spec.id];
+    const btn = icon ? iconButton(icon, spec.label) : button(spec.label);
     btn.dataset.action = spec.id;
+    btn.title = spec.label;
     if (spec.danger) btn.classList.add('is-danger');
     if (spec.primary) btn.classList.add('is-primary');
     if (spec.active) btn.classList.add('is-active');
@@ -205,14 +259,12 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
     };
     attr('tool', editor.currentTool);
     attr('color', editor.colorValue);
-    attr('head', editor.arrowHeadValue);
     attr('mode', editor.mosaicModeValue);
-    container.querySelectorAll<HTMLButtonElement>('[data-width]').forEach((b) => {
-      b.classList.toggle('is-active', Number(b.dataset.width) === editor.widthValue);
-    });
-    container.querySelectorAll<HTMLButtonElement>('[data-size]').forEach((b) => {
-      b.classList.toggle('is-active', Number(b.dataset.size) === editor.fontSizeValue);
-    });
+    // 下拉 / 滑杆：直接回填当前值（工具条重挂、选中图形改色等都会走到）
+    headSelect.value = editor.arrowHeadValue;
+    sizeSelect.value = String(editor.fontSizeValue);
+    widthRange.value = String(editor.widthValue);
+    widthVal.textContent = String(editor.widthValue);
 
     syncRow2();
   }
@@ -309,5 +361,13 @@ function button(text: string): HTMLButtonElement {
   // 宿主可能是拖拽区，按钮必须显式退出，否则点不动
   el.style.setProperty('-webkit-app-region', 'no-drag');
   el.style.setProperty('app-region', 'no-drag');
+  return el;
+}
+
+/** 图标按钮：注入内联 SVG，原生 title 做悬停文案 */
+function iconButton(svg: string, title: string): HTMLButtonElement {
+  const el = button('');
+  el.innerHTML = svg;
+  el.title = title;
   return el;
 }

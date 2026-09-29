@@ -17,7 +17,9 @@ import type { HandleId } from '../shared/selection';
 import type { ArrowHead, MosaicMode, Point, Shape, ToolId } from '../shared/types';
 
 const COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#2f6fed', '#af52de', '#ffffff', '#000000'];
-const WIDTHS = [2, 4, 6, 10];
+/** 线宽用滑动条连续调节（替代原 2/4/6/10 预设档位） */
+const WIDTH_MIN = 1;
+const WIDTH_MAX = 20;
 const ARROW_HEADS: ArrowHead[] = ['solid', 'open'];
 /** 文字字号独立于线宽 —— 线宽对文字没有意义 */
 const FONT_SIZES = [16, 24, 32, 48];
@@ -798,8 +800,12 @@ export class Editor {
     return COLORS;
   }
 
-  get widths(): number[] {
-    return WIDTHS;
+  get widthMin(): number {
+    return WIDTH_MIN;
+  }
+
+  get widthMax(): number {
+    return WIDTH_MAX;
   }
 }
 
