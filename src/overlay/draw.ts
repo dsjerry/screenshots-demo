@@ -46,6 +46,22 @@ export function renderOverlay(
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
   const payload = state.payload;
+
+  // 悬停窗口高亮：尚无选区时才画（选中后窗口捕获即退出）。
+  // 窗口矩形可能跨屏，按本窗口裁剪，出界部分由别的遮罩画。
+  if (payload && !payload.selection && payload.hoverRect) {
+    const h = intersect(payload.hoverRect, origin);
+    if (h) {
+      const hx = h.x - origin.x;
+      const hy = h.y - origin.y;
+      ctx.fillStyle = 'rgba(47, 111, 237, 0.12)';
+      ctx.fillRect(hx, hy, h.width, h.height);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#2f6fed';
+      ctx.strokeRect(hx + 1, hy + 1, Math.max(1, h.width - 2), Math.max(1, h.height - 2));
+    }
+  }
+
   if (!payload?.selection) return;
 
   const local = intersect(payload.selection, origin);

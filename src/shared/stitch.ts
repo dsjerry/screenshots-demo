@@ -1,4 +1,3 @@
-import { toBlob } from './bytes';
 import type { DisplayShot, Rect } from './types';
 
 /** 拼图只需要这三样 —— 钉图的 PinInitPayload 与遮罩的合成数据都满足它。 */
@@ -12,8 +11,19 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-async function decode(png: Uint8Array): Promise<ImageBitmap> {
-  return createImageBitmap(toBlob(png, 'image/png'));
+/** 原始 RGBA → 离屏画布（替代 PNG 解码），返回值直接当 drawImage 源用。 */
+function decode(shot: DisplayShot): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = shot.imageWidth;
+  canvas.height = shot.imageHeight;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('无法创建拼接用画布');
+  ctx.putImageData(
+    new ImageData(new Uint8ClampedArray(shot.pixels), shot.imageWidth, shot.imageHeight),
+    0,
+    0,
+  );
+  return canvas;
 }
 
 /**
@@ -62,7 +72,7 @@ export async function stitch(
 
     if (dx1 <= dx0 || dy1 <= dy0) continue;
 
-    const img = await decode(shot.png);
+    const img = decode(shot);
     // 只有比例不一致时才做重采样，1:1 保持像素原样
     ctx.imageSmoothingEnabled = Math.abs(shot.scaleX - outScale) > 0.001;
     ctx.imageSmoothingQuality = 'high';
@@ -77,7 +87,6 @@ export async function stitch(
       dx1 - dx0,
       dy1 - dy0,
     );
-    img.close();
   }
 
   ctx.imageSmoothingEnabled = true;

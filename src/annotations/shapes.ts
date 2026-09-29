@@ -15,6 +15,12 @@ function getScratch(key: string, w: number, h: number): HTMLCanvasElement {
   return c;
 }
 
+/** scratch 画布全是「画完就读回」的用途（getImageData / 反复取样），
+ *  Chromium 需要显式声明才会用 CPU 侧缓冲，否则每帧读回都走慢路径。 */
+function scratchCtx(c: HTMLCanvasElement): CanvasRenderingContext2D | null {
+  return c.getContext('2d', { willReadFrequently: true });
+}
+
 function normRect(x: number, y: number, w: number, h: number): { x: number; y: number; w: number; h: number } {
   return {
     x: w < 0 ? x + w : x,
@@ -213,14 +219,14 @@ function pixelatedRegion(
   const ky = t.d || 1;
 
   const snap = getScratch('snap', rw, rh);
-  const sctx = snap.getContext('2d');
+  const sctx = scratchCtx(snap);
   if (!sctx) return null;
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.clearRect(0, 0, rw, rh);
   sctx.drawImage(ctx.canvas, rx * kx, ry * ky, rw * kx, rh * ky, 0, 0, rw, rh);
 
   const tmp = getScratch('tmp', cols, rows);
-  const tctx = tmp.getContext('2d');
+  const tctx = scratchCtx(tmp);
   if (!tctx) return null;
   tctx.setTransform(1, 0, 0, 1, 0, 0);
   tctx.clearRect(0, 0, cols, rows);
@@ -229,7 +235,7 @@ function pixelatedRegion(
   tctx.drawImage(snap, 0, 0, rw, rh, 0, 0, cols, rows);
 
   const out = getScratch('pix', rw, rh);
-  const octx = out.getContext('2d');
+  const octx = scratchCtx(out);
   if (!octx) return null;
   octx.setTransform(1, 0, 0, 1, 0, 0);
   octx.clearRect(0, 0, rw, rh);
@@ -448,7 +454,7 @@ export function isShapeHit(canvas: HTMLCanvasElement, shape: Shape, p: Point, to
   // 检测画布只开**检测框**那么大，再把图形平移进来 —— 按 canvas 全尺寸开
   // 的话，4K 屏上这是一个 33MB 的 scratch，每个窗口各挂一份到进程退出。
   const hit = getScratch('hit', w, h);
-  const hctx = hit.getContext('2d');
+  const hctx = scratchCtx(hit);
   if (!hctx) return false;
   hctx.setTransform(1, 0, 0, 1, -x0, -y0);
   hctx.clearRect(0, 0, w, h);

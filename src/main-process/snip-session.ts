@@ -85,6 +85,13 @@ interface Session {
   shapesByContents: Map<number, Shape[]>;
   /** webContents.id -> 正被拖动 / 缩放的标注下标（null = 无）；广播给其余屏时滤掉 */
   inFlightByContents: Map<number, number | null>;
+  /** 光标下的应用窗口（虚拟屏 DIP）；仅 selecting 且尚无选区时非空 */
+  hoverRect: Rect | null;
+  hoverPoll: NodeJS.Timeout | null;
+  hoverBusy: boolean;
+  hoverErrorLogged: boolean;
+  /** 会话创建时刻，用于「触发 → 首窗 ready」的总耗时打点 */
+  startedAt: number;
 }
 
 export interface SnipHooks {
@@ -201,6 +208,7 @@ function broadcast(): void {
     phase: session.phase,
     toolbarDisplayId: toolbarDisplayFor(session),
     activeTool: session.activeTool,
+    hoverRect: session.hoverRect,
   };
   for (const win of session.overlays) {
     if (!win.isDestroyed()) {
@@ -216,6 +224,81 @@ function rectFrom(a: Point, b: Point): Rect {
     width: Math.abs(a.x - b.x),
     height: Math.abs(a.y - b.y),
   };
+}
+
+// --------------------------------------------------- 悬停窗口捕获
+
+/**
+ * get-windows 是 ESM-only 包，主进程（CJS bundle）里用动态 import 惰性加载；
+ * 原生部分是 N-API 预编译二进制，与 Electron 的 ABI 无关。
+ */
+let getWindowsModule: typeof import('get-windows') | null = null;
+
+/** 悬停轮询间隔：原生枚举全窗口，太频白烧 CPU，太慢高亮跟不上手 */
+const HOVER_POLL_MS = 64;
+
+function startHoverPoll(s: Session): void {
+  if (s.hoverPoll) return;
+  s.hoverPoll = setInterval(() => {
+    void detectHoverWindow(s);
+  }, HOVER_POLL_MS);
+}
+
+function stopHoverPoll(s: Session | null): void {
+  if (!s) return;
+  if (s.hoverPoll) clearInterval(s.hoverPoll);
+  s.hoverPoll = null;
+  s.hoverBusy = false;
+}
+
+/**
+ * 检测光标下的应用窗口：按 z 序取第一个包含光标的**第三方**窗口。
+ * 必须过滤自家进程 —— 截图时满屏遮罩就是最顶层窗口，不过滤永远命中的是自己。
+ * get-windows 返回物理像素，先用 screenToDipPoint 换算再与光标（DIP）比较。
+ */
+async function detectHoverWindow(s: Session): Promise<void> {
+  // 只有「还没框选、也没在拖」的 selecting 阶段做窗口捕获，其余时刻收掉高亮
+  if (session !== s || s.phase !== 'selecting' || s.mode || s.selection) {
+    if (s.hoverRect && session === s) {
+      s.hoverRect = null;
+      broadcast();
+    }
+    return;
+  }
+  if (s.hoverBusy) return;
+  s.hoverBusy = true;
+  try {
+    if (!getWindowsModule) getWindowsModule = await import('get-windows');
+    const cursor = screen.getCursorScreenPoint();
+    let rect: Rect | null = null;
+    for (const win of getWindowsModule.openWindowsSync()) {
+      const b = win.bounds;
+      if (b.width <= 0 || b.height <= 0) continue;
+      const p1 = screen.screenToDipPoint({ x: b.x, y: b.y });
+      const p2 = screen.screenToDipPoint({ x: b.x + b.width, y: b.y + b.height });
+      const dip = { x: p1.x, y: p1.y, width: p2.x - p1.x, height: p2.y - p1.y };
+      if (pointInRect(dip, cursor)) {
+        rect = dip;
+        break;
+      }
+    }
+    if (session !== s) return;
+    const changed =
+      (s.hoverRect === null) !== (rect === null) ||
+      (rect !== null && s.hoverRect !== null && !sameRect(rect, s.hoverRect));
+    if (changed) {
+      s.hoverRect = rect;
+      broadcast();
+    }
+  } catch (err) {
+    // 原生模块加载失败等场景：只记一次，功能降级为普通框选
+    if (!s.hoverErrorLogged) {
+      s.hoverErrorLogged = true;
+      console.error('[snip] 窗口检测不可用，已降级为普通框选', err);
+    }
+  } finally {
+    s.hoverBusy = false;
+  }
 }
 
 function fullDisplayAt(point: Point): Rect {
@@ -357,6 +440,7 @@ export async function beginSnip(): Promise<void> {
     rest.map(async (d) => ({ shots: await captureDisplays([d]) })),
   );
 
+  const t0 = performance.now();
   let primaryShots: DisplayShot[];
   try {
     primaryShots = await captureDisplays([primary]);
@@ -370,6 +454,7 @@ export async function beginSnip(): Promise<void> {
     hooks.focusMainWindow();
     return;
   }
+  console.log(`[snip] 抓屏（光标屏）${Math.round(performance.now() - t0)}ms`);
 
   session = {
     shots: [...primaryShots],
@@ -389,9 +474,15 @@ export async function beginSnip(): Promise<void> {
     editText: new Set(),
     shapesByContents: new Map(),
     inFlightByContents: new Map(),
+    hoverRect: null,
+    hoverPoll: null,
+    hoverBusy: false,
+    hoverErrorLogged: false,
+    startedAt: performance.now(),
   };
 
   spawnOverlays(primaryShots);
+  startHoverPoll(session);
 
   if (readyTimer) clearTimeout(readyTimer);
   readyTimer = setTimeout(() => {
@@ -462,6 +553,9 @@ export function onOverlayReady(sender: WebContents): void {
       clearTimeout(readyTimer);
       readyTimer = null;
     }
+    console.log(
+      `[snip] 触发 → 首窗 ready 总耗时 ${Math.round(performance.now() - s.startedAt)}ms`,
+    );
     win.show();
     win.moveTop();
     overlayAtCursor()?.focus();
@@ -522,6 +616,16 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
           broadcast();
           break;
         }
+      }
+
+      // 尚无选区且光标悬停在应用窗口上：整窗直接作为选区（窗口捕获，
+      // 主流截图工具语义）；之后照常进 adjusting，可拖可调
+      if (!prev && s.hoverRect && pointInRect(s.hoverRect, p)) {
+        s.selection = { ...s.hoverRect };
+        s.hoverRect = null;
+        s.phase = 'adjusting';
+        broadcast();
+        break;
       }
 
       // 重新框选：回到 selecting（手柄收起来），旧选区留着以便误点时还原
@@ -968,6 +1072,7 @@ export function onPinBoot(sender: WebContents): PinInitPayload | null {
 function hideOverlays(): void {
   if (!session) return;
   stopPoll(session);
+  stopHoverPoll(session);
   const overlays = session.overlays;
   session.overlays = [];
   for (const win of overlays) {
@@ -988,6 +1093,7 @@ export function cancelSnip(reason = 'manual'): void {
   }
   if (s) {
     stopPoll(s);
+    stopHoverPoll(s);
     for (const win of s.overlays) {
       if (win.isDestroyed()) continue;
       // teardown 让渲染进程丢掉全屏位图（窗口留着复用，不该一直占着显存）

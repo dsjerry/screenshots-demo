@@ -1,5 +1,4 @@
 import { intersect, renderOverlay } from './draw';
-import { toBlob } from '../shared/bytes';
 import { stitch } from '../shared/stitch';
 import { HANDLE_CURSOR, hitHandleIn, pointInRect } from '../shared/selection';
 import { Editor } from '../annotations/editor';
@@ -93,8 +92,10 @@ function drawRemote(): void {
   ctx.restore();
 }
 
-async function decode(png: Uint8Array): Promise<ImageBitmap> {
-  return createImageBitmap(toBlob(png, 'image/png'));
+/** 原始 RGBA 直接进 ImageData → ImageBitmap：跳过 PNG 编解码（省一两百毫秒） */
+async function decode(shot: DisplayShot): Promise<ImageBitmap> {
+  const data = new Uint8ClampedArray(shot.pixels);
+  return createImageBitmap(new ImageData(data, shot.imageWidth, shot.imageHeight));
 }
 
 // ---------------------------------------------------------------- 指针分流
@@ -402,6 +403,7 @@ async function exportImage(
 }
 
 async function main(): Promise<void> {
+  const tInit = performance.now();
   const init: OverlayInitPayload | null = await window.api.overlay.boot();
   if (!init) {
     console.warn('[overlay] boot 返回 null，本窗口不参与本次截图');
@@ -411,12 +413,14 @@ async function main(): Promise<void> {
   shot = init.shot;
   resize();
 
+  const tDecode = performance.now();
   try {
-    bg = await decode(shot.png);
+    bg = await decode(shot);
   } catch (err) {
     console.error('[overlay] 截图解码失败', err);
     return;
   }
+  console.log(`[overlay] 位图解码 ${Math.round(performance.now() - tDecode)}ms`);
 
   // 先订阅，再 ready —— 主进程要等首屏 ready 才开始广播
   window.api.overlay.selection((next) => {
@@ -463,6 +467,9 @@ async function main(): Promise<void> {
 
   paint();
   await window.api.overlay.ready();
+  console.log(
+    `[overlay] 初始化（boot→解码→ready）${Math.round(performance.now() - tInit)}ms`,
+  );
 }
 
 // ---------------------------------------------------------------- 放大镜
@@ -492,11 +499,11 @@ const magCanvas = document.getElementById('mag-stage') as HTMLCanvasElement;
 const magCtx = magCanvas.getContext('2d');
 const magPos = document.getElementById('mag-pos') as HTMLSpanElement;
 const magRgb = document.getElementById('mag-rgb') as HTMLSpanElement;
-/** 取色用的 1×1 采样画布（不能把整张图再复制一份） */
+/** 取色用的 1×1 采样画布（不能把整张图再复制一份）；逐帧读回，开 willReadFrequently */
 const sampleCanvas = document.createElement('canvas');
 sampleCanvas.width = 1;
 sampleCanvas.height = 1;
-const sampleCtx = sampleCanvas.getContext('2d');
+const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
 
 // ---------------------------------------------------------------- 取色显示
 
@@ -574,9 +581,15 @@ function measureFooter(): void {
 }
 
 function updateMagnifier(p: Point): void {
-  // 只在「还没框出选区」时出现：框选中、调整中、确认后都不显示
+  // 只在「还没框选」且没有悬停窗口高亮时出现：窗口捕获模式下高亮框
+  // 就是交互主角，放大镜挤在一起只会互相干扰
   const show =
-    !!shot && !!bg && !!magCtx && !!payload?.phase && !payload.selection;
+    !!shot &&
+    !!bg &&
+    !!magCtx &&
+    !!payload?.phase &&
+    !payload.selection &&
+    !payload.hoverRect;
   if (!show || !shot || !bg || !magCtx || !payload) {
     magEl.hidden = true;
     return;

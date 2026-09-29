@@ -28,8 +28,12 @@ export interface DisplayShot {
   scaleY: number;
   imageWidth: number;
   imageHeight: number;
-  /** 缩略图的 PNG 字节 */
-  png: Uint8Array;
+  /**
+   * 屏幕原始位图（RGBA，imageWidth × imageHeight × 4 字节）。
+   * 不用 PNG：整屏 PNG 的同步编码 + 渲染端解码要几百毫秒，
+   * 原始位图 IPC 直传（structured clone 一次 memcpy）然后直接进 ImageData。
+   */
+  pixels: Uint8Array;
 }
 
 export interface OverlayInitPayload {
@@ -60,6 +64,11 @@ export interface OverlaySelectionPayload {
   toolbarDisplayId: number | null;
   /** 当前标注工具，其余遮罩据此决定「画标注」还是「调整选区」 */
   activeTool: ToolId;
+  /**
+   * 光标下的应用窗口（虚拟屏 DIP）。仅在 selecting 且尚无选区时非空：
+   * 遮罩据此画高亮框（主流截图工具的窗口捕获），此时按下鼠标即采纳为选区。
+   */
+  hoverRect: Rect | null;
 }
 
 /**

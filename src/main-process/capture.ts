@@ -6,6 +6,20 @@ function toUint8(buf: Buffer): Uint8Array {
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
+/**
+ * `NativeImage.toBitmap()` 给的是 BGRA，`ImageData` 要 RGBA —— 原地交换 B/R。
+ * 位图是刚分配的私有 Buffer，原地改没有副作用；截图不透明，无需处理 alpha。
+ */
+function bgraToRgba(buf: Buffer): Uint8Array {
+  const px = toUint8(buf);
+  for (let i = 0; i < px.length; i += 4) {
+    const b = px[i];
+    px[i] = px[i + 2];
+    px[i + 2] = b;
+  }
+  return px;
+}
+
 export function unionBounds(displays: Display[]): Rect {
   let minX = Infinity;
   let minY = Infinity;
@@ -116,6 +130,16 @@ export async function captureDisplays(targets: Display[]): Promise<DisplayShot[]
           ` display_id="${source.display_id}"`,
       );
 
+      // 原始位图代替 PNG：整屏 PNG 同步编码要一两百毫秒，这里是纯内存交换
+      const tEncode = performance.now();
+      const pixels = bgraToRgba(source.thumbnail.toBitmap());
+      if (pixels.length !== size.width * size.height * 4) {
+        throw new Error(
+          `display ${display.id} 位图尺寸不符：${pixels.length} != ${size.width}x${size.height}x4`,
+        );
+      }
+      console.log(`[capture] display=${display.id} 位图转换 ${Math.round(performance.now() - tEncode)}ms`);
+
       shots.push({
         displayId: display.id,
         bounds: { ...display.bounds },
@@ -123,7 +147,7 @@ export async function captureDisplays(targets: Display[]): Promise<DisplayShot[]
         scaleY,
         imageWidth: size.width,
         imageHeight: size.height,
-        png: toUint8(source.thumbnail.toPNG()),
+        pixels,
       });
     }
   }

@@ -154,6 +154,8 @@ stateDiagram-v2
 
 三个阶段的 `phase` 定义在 `src/shared/types.ts` 的 `SnipPhase`；选区状态**只存在主进程**（虚拟屏 DIP 坐标，可为负），遮罩是纯投影。
 
+尚无选区时支持**窗口捕获**：主进程按 64ms 轮询 `get-windows` 的 `openWindowsSync()`（按 z 序返回全部窗口，物理像素坐标），过滤自家进程后取第一个包含光标的窗口，经 `screen.screenToDipPoint` 换算成 DIP 后以 `hoverRect` 随 `overlay:selection` 广播；遮罩画高亮框，此时单击直接把整窗采纳为选区。原生模块加载失败只记一次日志，功能降级为普通框选。
+
 ## IPC 通道方向
 
 - **主 → 渲染**（`send`）：`overlay:selection`、`overlay:teardown`、`overlay:compose`、`overlay:remoteShapes`、`overlay:remoteDraft`、`app:state`

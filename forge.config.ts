@@ -11,7 +11,15 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
   },
-  rebuildConfig: {},
+  // onlyModules: [] = rebuild 阶段不重建任何模块。唯一的原生依赖
+  // get-windows 是 N-API 预编译二进制（ABI 与 Electron 版本无关），
+  // 无需重编；反而 @electron/rebuild 会把它误判成 node-gyp 模块
+  // （node-pre-gyp 装在顶层没被识别），进而要求 VS 编译环境 —— 本机
+  // 只有 VS 18，@electron/node-gyp 最高只认到 v17，直接编译失败。
+  // 以后若新增真正需要重编译的原生依赖，把模块名加进数组即可。
+  rebuildConfig: {
+    onlyModules: [],
+  },
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),
