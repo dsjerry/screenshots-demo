@@ -2,9 +2,9 @@
  * IPC 通道名的唯一来源 —— 任何地方都不允许写字符串字面量。
  *
  * 主 -> 渲染：`selection` / `teardown` / `compose` / `appState` /
- *           `remoteShapes` / `remoteDraft`（事件，send）
+ *           `remoteShapes` / `remoteDraft` / `scrollFrame`（事件，send）
  * 渲染 -> 主：`boot` / `ready` / `input` / `tool` / `action` / `shapes` / `draft` /
- *           `editState` / `move` / `action(pin)` / `startSnip`（invoke）
+ *           `editState` / `move` / `action(pin)` / `startSnip` / `action(scroll)`（invoke）
  *
  * `boot` 用 invoke 而不是 send，是为了避免「主进程先 send、渲染进程还没订阅」的竞态。
  * `tool` / `action` / `shapes` / `draft` / `editState` 是**遮罩阶段的标注**用的：
@@ -41,6 +41,11 @@ export const CH = {
   overlayRemoteDraft: 'overlay:remoteDraft',
   /** 文字输入框开合 —— 打字时主进程别把 Enter/Esc 吃掉 */
   overlayEditState: 'overlay:editState',
+
+  /** 主 -> 控制条：滚动截长图的裁剪帧（选区条带 RGBA） */
+  scrollFrame: 'scroll:frame',
+  /** 控制条 -> 主：复制 / 保存（随带长图 PNG）/ 取消 */
+  scrollAction: 'scroll:action',
 
   pinBoot: 'pin:boot',
   pinReady: 'pin:ready',

@@ -17,13 +17,14 @@ body {
   height: 100%;
 }
 
-/* ---------------- 放大镜（仅框选前显示） ---------------- */
+/* ---------------- 放大镜（框选前 + 选区内显示） ---------------- */
 
 .magnifier {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 10;
+  /* 全部 UI 最上层：跟手元素，被工具条 / 快捷键面板压住会看不出取色内容 */
+  z-index: 30;
   /* 尺寸来源是 overlay.ts 的 MAG_W / MAG_H，经 --mag-* 下发；
      fallback 只在脚本执行前生效 */
   width: var(--mag-w, 180px);
@@ -109,4 +110,49 @@ body {
 
 .toolbar-row[hidden] {
   display: none;
+}
+
+/* 左下角快捷键提示面板：本屏是工具条所在屏且已有选区时显示。
+   两列网格排成**紧凑矩形** —— 一字横排会拉出近千像素，很容易顶到
+   工具条。纯提示不接收事件 —— 不能挡住左下角画布的框选 / 窗口捕获点击。 */
+.shortcut-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 15;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 18px;
+  padding: 8px 12px;
+  background: rgba(24, 26, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+  color: #d7dade;
+  pointer-events: none;
+  user-select: none;
+}
+
+.shortcut-panel[hidden] {
+  display: none;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.shortcut-panel kbd {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 11px;
+  line-height: 17px;
+  color: #ffffff;
 }

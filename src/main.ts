@@ -65,6 +65,8 @@ function showMainWindow(): void {
 
 // 单实例锁：双开会出现两个托盘图标、两份全局快捷键。拿不到锁说明已有
 // 实例在跑 —— 那边会收到 second-instance 并弹出主窗口，这边直接退出。
+// 注意 dev（npm start）与打包产物共用 userData（app.name 都是
+// "screenshots"），dev 开着时打包 exe 会直接退出，属预期。
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();

@@ -48,8 +48,9 @@ export interface OverlayInitPayload {
  * - `adjusting`：松手后，8 向手柄 + 浮动工具条，选区可实时调整；
  *   `Enter` / 双击 = 复制，点「钉住」才进 `confirming`
  * - `confirming`：已确认钉住，等钉图就绪
+ * - `scrolling`：滚动截长图 —— 遮罩已收起，由滚动截图专用窗口接管
  */
-export type SnipPhase = 'selecting' | 'adjusting' | 'confirming';
+export type SnipPhase = 'selecting' | 'adjusting' | 'confirming' | 'scrolling';
 
 export interface OverlaySelectionPayload {
   /** 虚拟屏 DIP；null 表示尚未产生选区 */
@@ -75,9 +76,10 @@ export interface OverlaySelectionPayload {
  * 遮罩工具条的动作 —— **没有「确定」**（主流截图工具都没有）：
  * - `pin`   进钉图窗口（本工具区别于主流的地方，标注原样带过去）
  * - `copy` / `save` 就地合成整图 → 剪贴板 / 存盘 → 结束截图
+ * - `scroll` 进入滚动截长图（遮罩收起，由专用窗口接管）
  * - `cancel` 取消
  */
-export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save';
+export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'scroll';
 
 /** 遮罩就地合成导出所需的数据（主进程推给宿主遮罩）。 */
 export interface OverlayComposePayload {
@@ -94,10 +96,33 @@ export type OverlayInput =
   | { kind: 'dblclick' }
   | { kind: 'enter' }
   | { kind: 'escape' }
-  | { kind: 'context' };
+  | { kind: 'context' }
+  /** 方向键微调选区（adjusting 阶段）：渲染端给的 DIP 增量，主进程钳制碰撞 */
+  | { kind: 'nudge'; dx: number; dy: number };
 
 export interface OverlayTeardownPayload {
   reason: 'confirm' | 'cancel';
+}
+
+/**
+ * 滚动截长图的单帧：已按选区裁好的原始 RGBA 条带，
+ * 主进程按固定间隔抓屏裁剪后推给控制条渲染进程拼接。
+ */
+export interface ScrollFramePayload {
+  pixels: Uint8Array;
+  width: number;
+  height: number;
+}
+
+/**
+ * 滚动截图控制条的动作：
+ * - `auto` / `manual` 切换滚动方式（自动 = 主进程注入滚轮）
+ * - `bottom` 自动模式下渲染端判定已到底，主进程停止注入
+ * - `copy` / `save` 随带拼接完成的 PNG 结束；`cancel` 收场
+ */
+export interface ScrollActionPayload {
+  kind: 'copy' | 'save' | 'cancel' | 'auto' | 'manual' | 'bottom';
+  png?: Uint8Array;
 }
 
 /**

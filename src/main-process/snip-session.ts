@@ -7,6 +7,12 @@ import {
   pruneOverlayCache,
 } from './overlay-window';
 import type { OverlayHooks } from './overlay-window';
+import {
+  startAutoScroll,
+  startScrollCapture,
+  stopAutoScroll,
+  stopScrollCapture,
+} from './scroll-capture';
 import { createPinWindow, loadPin, copyPng, defaultSnipName, savePng } from './pin-window';
 import { CH } from '../shared/channels';
 import {
@@ -36,6 +42,7 @@ import type {
   PinInitPayload,
   Point,
   Rect,
+  ScrollActionPayload,
   Shape,
   SnipPhase,
   ToolId,
@@ -55,6 +62,8 @@ interface PinLayout {
 type DragMode =
   /** 重新框选；prev 是误点时要还原的旧选区 */
   | { kind: 'new'; anchor: Point; prev: Rect | null }
+  /** 窗口捕获待定：原地点击 = 采纳整窗；拖动过阈值 = 转为普通框选 */
+  | { kind: 'window'; anchor: Point }
   /** 整体移动 */
   | { kind: 'move'; origin: Rect; start: Point }
   /** 拖手柄调整 */
@@ -101,6 +110,13 @@ export interface SnipHooks {
 }
 
 const MIN_SELECTION = 3;
+/**
+ * 窗口捕获的「原地点击」判定：按下后位移小于该值才采纳整窗，
+ * 超过即转为普通框选 —— 否则悬停在窗口上就画不了自定义选区了。
+ */
+const WINDOW_CLICK_THRESHOLD = 4;
+/** 长图捕获区域的最小边长（DIP）：太小滚不出重叠，无法拼接 */
+const MIN_SCROLL_REGION = 64;
 /** 只等**第一块屏**（光标所在屏）就绪 —— 其余屏抓完各自补上，不卡首帧 */
 const READY_TIMEOUT_MS = 2500;
 /** 确认时若其余屏还没抓完，最多再等这么久（否则拼接会缺一块） */
@@ -257,8 +273,14 @@ function stopHoverPoll(s: Session | null): void {
  * get-windows 返回物理像素，先用 screenToDipPoint 换算再与光标（DIP）比较。
  */
 async function detectHoverWindow(s: Session): Promise<void> {
-  // 只有「还没框选、也没在拖」的 selecting 阶段做窗口捕获，其余时刻收掉高亮
-  if (session !== s || s.phase !== 'selecting' || s.mode || s.selection) {
+  // 只有「还没框选、也没在拖」的 selecting 阶段做窗口捕获；窗口捕获
+  // 待定（原地点击判定中）也要继续 —— 高亮跟着光标走，松手才采纳
+  const hoverIdle =
+    session === s &&
+    s.phase === 'selecting' &&
+    !s.selection &&
+    (!s.mode || s.mode.kind === 'window');
+  if (!hoverIdle) {
     if (s.hoverRect && session === s) {
       s.hoverRect = null;
       broadcast();
@@ -396,6 +418,15 @@ function applyDrag(s: Session): void {
   const mode = s.mode;
   if (!mode) return;
   const cur = screen.getCursorScreenPoint();
+  if (mode.kind === 'window') {
+    // 窗口捕获待定：位移过阈值转成普通框选（从原按下点起算），否则
+    // 维持 selection = null，悬停高亮继续跟着光标走
+    if (Math.hypot(cur.x - mode.anchor.x, cur.y - mode.anchor.y) >= WINDOW_CLICK_THRESHOLD) {
+      s.mode = { kind: 'new', anchor: mode.anchor, prev: null };
+      s.selection = rectFrom(mode.anchor, cur);
+    }
+    return;
+  }
   if (mode.kind === 'new') {
     // 重新框选的两端都是光标，天然落在桌面内，无需夹取
     s.selection = rectFrom(mode.anchor, cur);
@@ -407,10 +438,20 @@ function applyDrag(s: Session): void {
 }
 
 /**
- * 松手收尾：位移不足的「new」按误点处理（有旧选区就还原，否则选中整屏），
- * 然后一律进入 adjusting —— 出 8 向手柄，Enter / 双击才确认。
+ * 松手收尾：
+ * - 窗口捕获待定（原地点击）→ 采纳当前悬停窗口为选区；
+ * - 位移不足的「new」按误点处理（有旧选区就还原，否则选中整屏），
+ *   然后一律进入 adjusting —— 出 8 向手柄，Enter / 双击才确认。
  */
 function finishDrag(s: Session, mode: DragMode): void {
+  if (mode.kind === 'window') {
+    s.selection = s.hoverRect
+      ? { ...s.hoverRect }
+      : fullDisplayAt(mode.anchor);
+    s.hoverRect = null;
+    s.phase = 'adjusting';
+    return;
+  }
   if (mode.kind === 'new' && !hasRealSelection(s.selection)) {
     s.selection =
       mode.prev && hasRealSelection(mode.prev)
@@ -618,13 +659,12 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
         }
       }
 
-      // 尚无选区且光标悬停在应用窗口上：整窗直接作为选区（窗口捕获，
-      // 主流截图工具语义）；之后照常进 adjusting，可拖可调
+      // 尚无选区且光标悬停在应用窗口上：进入「窗口捕获待定」——
+      // 原地点击（位移小于阈值）= 采纳整窗；按住拖动 = 转普通框选，
+      // 自定义选区不会被窗口捕获挡死
       if (!prev && s.hoverRect && pointInRect(s.hoverRect, p)) {
-        s.selection = { ...s.hoverRect };
-        s.hoverRect = null;
-        s.phase = 'adjusting';
-        broadcast();
+        s.mode = { kind: 'window', anchor: p };
+        startPoll(s);
         break;
       }
 
@@ -654,6 +694,19 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
       }
       // 主流语义：双击 / Enter = **复制**（不是「确认进钉图」）
       requestExport('copy');
+      break;
+    }
+    case 'nudge': {
+      // 方向键微调选区：1px（Shift=10px）粒度由渲染端给，主进程负责
+      // 碰撞钳制 —— 拖动 / 待定 / 非 adjusting 阶段一律不生效
+      if (s.phase !== 'adjusting' || s.mode) break;
+      const sel = s.selection;
+      if (!hasRealSelection(sel)) break;
+      s.selection = clampRect(
+        { ...sel, x: sel.x + payload.dx, y: sel.y + payload.dy },
+        s.virtualBounds,
+      );
+      broadcast();
       break;
     }
     case 'escape':
@@ -695,7 +748,97 @@ export function onOverlayAction(
     void confirmSnip();
     return;
   }
+  if (kind === 'scroll') {
+    startScroll(s);
+    return;
+  }
   requestExport(kind);
+}
+
+/**
+ * 进入滚动截长图：长图沿竖向滚动，只能在单块屏内进行 —— 与各屏取
+ * **最大交集**作为实际捕获区域。最大化窗口的选区会带出屏幕外的隐形
+ * 边框（窗口捕获采用 GetWindowRect 风格的 bounds），夹回屏幕后正好是
+ * 可见区域；真正跨屏的选区则保留最大的一块。
+ */
+function startScroll(s: Session): void {
+  const sel = s.selection;
+  if (!hasRealSelection(sel)) return;
+  let bestShot: DisplayShot | null = null;
+  let bestRegion: Rect | null = null;
+  let bestArea = 0;
+  for (const shot of s.shots) {
+    const b = shot.bounds;
+    const x0 = Math.max(sel.x, b.x);
+    const y0 = Math.max(sel.y, b.y);
+    const x1 = Math.min(sel.x + sel.width, b.x + b.width);
+    const y1 = Math.min(sel.y + sel.height, b.y + b.height);
+    const area = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+    if (area > bestArea) {
+      bestArea = area;
+      bestShot = shot;
+      bestRegion = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+    }
+  }
+  if (
+    !bestShot ||
+    !bestRegion ||
+    bestRegion.width < MIN_SCROLL_REGION ||
+    bestRegion.height < MIN_SCROLL_REGION
+  ) {
+    console.warn('[scroll] 选区无法落在单块屏内，长图未启动');
+    return;
+  }
+  stopPoll(s);
+  stopHoverPoll(s);
+  hideOverlays();
+  s.phase = 'scrolling';
+  if (!startScrollCapture(bestShot, bestRegion)) {
+    console.warn('[scroll] 启动失败（可能已在滚动中）');
+  }
+}
+
+/**
+ * 滚动控制条的动作：auto / manual 切换滚动方式，bottom = 自动模式判定
+ * 已到底（停止注入），复制 / 保存（随带拼接好的长图 PNG）→ 结束截图后
+ * 进剪贴板 / 存盘；取消 → 直接收场。
+ */
+export async function onScrollAction(
+  _sender: WebContents,
+  payload: ScrollActionPayload,
+): Promise<void> {
+  switch (payload.kind) {
+    case 'auto':
+      await startAutoScroll();
+      return;
+    case 'manual':
+      stopAutoScroll();
+      return;
+    case 'bottom':
+      stopAutoScroll();
+      console.log('[scroll] 已到底部，自动滚动停止');
+      return;
+    case 'cancel':
+      cancelSnip('scroll-cancel');
+      return;
+  }
+  const png = payload.png;
+  if (!png || png.byteLength === 0) {
+    cancelSnip('scroll-empty');
+    return;
+  }
+  // 先收场（滚动窗口销毁、此前隐藏的窗口恢复），再进剪贴板 / 存盘对话框
+  cancelSnip(payload.kind === 'copy' ? 'scroll-copy' : 'scroll-save');
+  try {
+    if (payload.kind === 'copy') {
+      await copyPng(png);
+      console.log(`[scroll] 长图已复制 ${png.byteLength} 字节`);
+    } else {
+      await savePng(null, png, defaultSnipName());
+    }
+  } catch (err) {
+    console.error('[scroll] 导出失败', err);
+  }
 }
 
 /**
@@ -1094,6 +1237,7 @@ export function cancelSnip(reason = 'manual'): void {
   if (s) {
     stopPoll(s);
     stopHoverPoll(s);
+    stopScrollCapture();
     for (const win of s.overlays) {
       if (win.isDestroyed()) continue;
       // teardown 让渲染进程丢掉全屏位图（窗口留着复用，不该一直占着显存）

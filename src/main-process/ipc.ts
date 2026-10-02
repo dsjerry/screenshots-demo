@@ -5,6 +5,7 @@ import type {
   OverlayInput,
   PinAction,
   PinInitPayload,
+  ScrollActionPayload,
   Shape,
   ToolId,
 } from '../shared/types';
@@ -22,6 +23,7 @@ import {
   onOverlayDraft,
   onOverlayInFlight,
   onOverlayTool,
+  onScrollAction,
   onPinBoot,
   ownsPendingPin,
   setSnipHooks,
@@ -108,6 +110,11 @@ export function registerIpc(ctx: AppContext): void {
   // ---------------------------------------------------------- 钉图窗口
   ipcMain.handle(CH.pinBoot, (event): PinInitPayload | null =>
     onPinBoot(event.sender),
+  );
+
+  // -------------------------------------------------------- 滚动截长图
+  ipcMain.handle(CH.scrollAction, (event, payload: ScrollActionPayload) =>
+    onScrollAction(event.sender, payload),
   );
 
   ipcMain.handle(CH.pinReady, (event) => {

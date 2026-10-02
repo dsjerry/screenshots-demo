@@ -10,6 +10,8 @@ import type {
   PinAction,
   PinActionResult,
   PinInitPayload,
+  ScrollActionPayload,
+  ScrollFramePayload,
   Shape,
   ToolId,
 } from './types';
@@ -61,6 +63,12 @@ export interface ScreenshotsApi {
     boot(): Promise<PinInitPayload | null>;
     ready(payload: { width: number; height: number }): Promise<void>;
     action(payload: PinAction): Promise<PinActionResult>;
+  };
+  scroll: {
+    /** 主进程推来的一帧选区条带（已裁好的 RGBA） */
+    frame(cb: (payload: ScrollFramePayload) => void): () => void;
+    /** 复制 / 保存（随带拼接好的长图 PNG）/ 取消 */
+    action(payload: ScrollActionPayload): Promise<void>;
   };
   app: {
     state(cb: (payload: { snipping: boolean }) => void): () => void;

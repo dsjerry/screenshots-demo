@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*"
+    />
+    <title>scroll</title>
+    <link rel="stylesheet" href="/src/scroll/scroll.css" />
+  </head>
+  <body>
+    <div class="bar">
+      <div class="status">
+        <span id="size">0 × 0</span>
+        <span id="hint">滚动鼠标滚轮追加内容</span>
+      </div>
+      <div class="modes">
+        <button id="mode-manual" type="button" class="is-active">手动</button>
+        <button id="mode-auto" type="button">自动</button>
+      </div>
+      <div class="actions">
+        <button id="copy" type="button">复制</button>
+        <button id="save" type="button">保存</button>
+        <button id="cancel" type="button" class="danger">取消</button>
+      </div>
+    </div>
+    <script type="module" src="/src/scroll/scroll.ts"></script>
+  </body>
+</html>

@@ -23,6 +23,9 @@ const toolbarEl = document.getElementById('toolbar') as HTMLDivElement;
 const textEditorEl = document.getElementById(
   'text-editor',
 ) as HTMLTextAreaElement;
+const shortcutPanelEl = document.getElementById(
+  'shortcut-panel',
+) as HTMLDivElement;
 
 let shot: DisplayShot | null = null;
 let payload: OverlaySelectionPayload | null = null;
@@ -65,6 +68,7 @@ function paint(): void {
   editor?.renderInto(ctx);
   drawRemote();
   syncToolbar();
+  syncShortcutPanel();
 }
 
 /**
@@ -160,6 +164,85 @@ canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault();
   void window.api.overlay.input({ kind: 'context' });
 });
+
+/**
+ * 方向键微调选区：短按 1px 精调，Shift = 固定 10px 大步；**长按加速**
+ * 由自绘循环接管 —— 系统键盘重复是匀速的，要「按越久走越快」只能自己
+ * 排程：复刻系统 ~350ms 起始延迟后每 40ms 一拍，步长按持有时长
+ * 2 / 4 / 8 / 16 逐级加速（最高约 400px/s）。只在已有选区的 adjusting
+ * 阶段生效；位移在主进程做（选区唯一真相源，含碰撞钳制）。
+ * 输入框 / 下拉聚焦时绝不接管（别抢原生键盘导航）。
+ */
+const NUDGE_DELAY_MS = 350;
+const NUDGE_TICK_MS = 40;
+
+let nudgeRepeat: {
+  key: string;
+  dx: number;
+  dy: number;
+  startedAt: number;
+  timer: number;
+} | null = null;
+
+function stopNudgeRepeat(): void {
+  if (!nudgeRepeat) return;
+  clearInterval(nudgeRepeat.timer);
+  nudgeRepeat = null;
+}
+
+function startNudgeRepeat(key: string, dx: number, dy: number): void {
+  stopNudgeRepeat();
+  const state = { key, dx, dy, startedAt: performance.now(), timer: 0 };
+  state.timer = window.setInterval(() => {
+    // 选区没了 / 阶段变了（确认、取消、重新框选）就停
+    if (!payload || payload.phase !== 'adjusting' || !payload.selection) {
+      stopNudgeRepeat();
+      return;
+    }
+    const hold = performance.now() - state.startedAt;
+    if (hold < NUDGE_DELAY_MS) return; // 起始延迟内不重复，保留短按精调
+    let step = 2;
+    if (hold > 2600) step = 16;
+    else if (hold > 1400) step = 8;
+    else if (hold > 600) step = 4;
+    void window.api.overlay.input({
+      kind: 'nudge',
+      dx: state.dx * step,
+      dy: state.dy * step,
+    });
+  }, NUDGE_TICK_MS);
+  nudgeRepeat = state;
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.target instanceof HTMLTextAreaElement) return;
+  if (event.target instanceof HTMLSelectElement) return;
+  if (event.target instanceof HTMLInputElement) return;
+  if (!shot || payload?.phase !== 'adjusting' || !payload.selection) return;
+  let dx = 0;
+  let dy = 0;
+  if (event.key === 'ArrowLeft') dx = -1;
+  else if (event.key === 'ArrowRight') dx = 1;
+  else if (event.key === 'ArrowUp') dy = -1;
+  else if (event.key === 'ArrowDown') dy = 1;
+  else return;
+  event.preventDefault();
+  if (event.shiftKey) {
+    // Shift = 固定 10px 大步，直接用系统重复节奏，不进加速曲线
+    void window.api.overlay.input({ kind: 'nudge', dx: dx * 10, dy: dy * 10 });
+    stopNudgeRepeat();
+    return;
+  }
+  if (event.repeat) return; // 长按重复交给自绘加速循环
+  void window.api.overlay.input({ kind: 'nudge', dx, dy });
+  startNudgeRepeat(event.key, dx, dy);
+});
+
+window.addEventListener('keyup', (event) => {
+  // 只停匹配方向：按住一个方向时短暂点按另一个方向，松开前者不打断后者
+  if (nudgeRepeat && nudgeRepeat.key === event.key) stopNudgeRepeat();
+});
+window.addEventListener('blur', stopNudgeRepeat);
 
 window.addEventListener('resize', () => {
   resize();
@@ -274,6 +357,20 @@ function syncToolbar(): void {
   toolbarEl.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
 }
 
+/**
+ * 左下角快捷键面板：主流工具的同款布局 —— 已有选区（adjusting）且本屏是
+ * 工具条所在屏时显示，跟随工具条出现 / 消失，提示当前可用的快捷键。
+ */
+function syncShortcutPanel(): void {
+  shortcutPanelEl.hidden = !(
+    !!shot &&
+    !!payload &&
+    payload.phase === 'adjusting' &&
+    !!payload.selection &&
+    payload.toolbarDisplayId === shot.displayId
+  );
+}
+
 function setupAnnotation(): void {
   // 两行式工具条（结构见 annotations/toolbar.ts），这里只注入动作组。
   // 没有「确定」步骤：复制 / 保存就地合成即结束，钉住才是主操作；
@@ -292,6 +389,14 @@ function setupAnnotation(): void {
       label: '保存',
       run: () => {
         void window.api.overlay.action({ kind: 'save' });
+      },
+    },
+    {
+      id: 'scroll',
+      label: '长图',
+      run: () => {
+        // 主进程校验选区需在单屏内；随后收起遮罩进入滚动捕获
+        void window.api.overlay.action({ kind: 'scroll' });
       },
     },
     {
@@ -444,6 +549,8 @@ async function main(): Promise<void> {
     }
     magEl.hidden = true;
     toolbarEl.hidden = true;
+    shortcutPanelEl.hidden = true;
+    stopNudgeRepeat();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
@@ -581,15 +688,18 @@ function measureFooter(): void {
 }
 
 function updateMagnifier(p: Point): void {
-  // 只在「还没框选」且没有悬停窗口高亮时出现：窗口捕获模式下高亮框
-  // 就是交互主角，放大镜挤在一起只会互相干扰
-  const show =
-    !!shot &&
-    !!bg &&
-    !!magCtx &&
-    !!payload?.phase &&
-    !payload.selection &&
-    !payload.hoverRect;
+  // 显示条件 —— **图像可见（未被遮罩盖住）的地方才需要放大镜**：
+  // 1. 尚无选区且没有窗口捕获高亮（框选前）；
+  // 2. 已有选区且处于 adjusting、光标落在选区的本屏部分内 —— 选区内
+  //    擦掉了遮罩，取色依然有意义；选区外是遮罩，放大镜没有存在意义。
+  // 重新框选（selecting 且已有选区）不显示，高亮框待定时也不显示。
+  let show =
+    !!shot && !!bg && !!magCtx && !!payload?.phase && !payload.hoverRect;
+  if (show && payload?.selection) {
+    const local = selectionLocal();
+    show =
+      payload.phase === 'adjusting' && !!local && pointInRect(local, p);
+  }
   if (!show || !shot || !bg || !magCtx || !payload) {
     magEl.hidden = true;
     return;

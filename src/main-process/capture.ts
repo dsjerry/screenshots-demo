@@ -80,6 +80,11 @@ function pickSource(
   return sources[idx] ?? null;
 }
 
+export interface CaptureOptions {
+  /** 滚动截图的帧循环等高频调用置 true，别让逐帧日志刷屏 */
+  silent?: boolean;
+}
+
 /**
  * 抓取指定的显示器。
  *
@@ -92,7 +97,10 @@ function pickSource(
  * - 后续所有几何都用 `scaleX/scaleY`，绝不用 `display.scaleFactor`；
  * - 必须在对应遮罩窗口存在**之前**调用，否则会把自己截进图里。
  */
-export async function captureDisplays(targets: Display[]): Promise<DisplayShot[]> {
+export async function captureDisplays(
+  targets: Display[],
+  opts: CaptureOptions = {},
+): Promise<DisplayShot[]> {
   const all = screen.getAllDisplays();
   const groups = groupByWant(targets);
   const shots: DisplayShot[] = [];
@@ -114,21 +122,23 @@ export async function captureDisplays(targets: Display[]): Promise<DisplayShot[]
       const scaleX = size.width / display.bounds.width;
       const scaleY = size.height / display.bounds.height;
 
-      if (Math.abs(scaleX - scaleY) > 0.02) {
+      if (!opts.silent && Math.abs(scaleX - scaleY) > 0.02) {
         console.warn(
           `[capture] display ${display.id} 的 X/Y 比例偏差过大：` +
             `scaleX=${scaleX.toFixed(4)} scaleY=${scaleY.toFixed(4)}`,
         );
       }
-      console.log(
-        `[capture] display=${display.id}` +
-          ` bounds=${display.bounds.x},${display.bounds.y} ${display.bounds.width}x${display.bounds.height}` +
-          ` scaleFactor=${display.scaleFactor}` +
-          ` want=${want.width}x${want.height}` +
-          ` actual=${size.width}x${size.height}` +
-          ` ratio=${scaleX.toFixed(4)}/${scaleY.toFixed(4)}` +
-          ` display_id="${source.display_id}"`,
-      );
+      if (!opts.silent) {
+        console.log(
+          `[capture] display=${display.id}` +
+            ` bounds=${display.bounds.x},${display.bounds.y} ${display.bounds.width}x${display.bounds.height}` +
+            ` scaleFactor=${display.scaleFactor}` +
+            ` want=${want.width}x${want.height}` +
+            ` actual=${size.width}x${size.height}` +
+            ` ratio=${scaleX.toFixed(4)}/${scaleY.toFixed(4)}` +
+            ` display_id="${source.display_id}"`,
+        );
+      }
 
       // 原始位图代替 PNG：整屏 PNG 同步编码要一两百毫秒，这里是纯内存交换
       const tEncode = performance.now();
@@ -138,7 +148,11 @@ export async function captureDisplays(targets: Display[]): Promise<DisplayShot[]
           `display ${display.id} 位图尺寸不符：${pixels.length} != ${size.width}x${size.height}x4`,
         );
       }
-      console.log(`[capture] display=${display.id} 位图转换 ${Math.round(performance.now() - tEncode)}ms`);
+      if (!opts.silent) {
+        console.log(
+          `[capture] display=${display.id} 位图转换 ${Math.round(performance.now() - tEncode)}ms`,
+        );
+      }
 
       shots.push({
         displayId: display.id,

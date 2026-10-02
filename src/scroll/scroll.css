@@ -1,0 +1,102 @@
+/* 滚动截长图控制条：磨砂玻璃风（半透明 + backdrop 磨砂 + 圆角）。
+   整条是系统原生拖拽区，按钮显式退出（见 .actions button）。
+   窗口比可视区大 8px（body padding），给圆角与投影留呼吸空间。 */
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  padding: 8px;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 100%;
+  padding: 0 14px;
+  /* 半透明底直接透出背后滚动中的页面。
+     不要在这里用 backdrop-filter —— Windows 上它会把透明窗口的合成面
+     变成不透明，整个「背景没有透明」就是它造成的 */
+  background: rgba(18, 20, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  /* 投影收小：大半径投影在亮色壁纸上会糊成一圈灰罩，看着像多了一层底色 */
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  color: #d7dade;
+  font-size: 12px;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.status {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#size {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+#hint {
+  font-size: 11px;
+  color: rgba(215, 218, 222, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions,
+.modes {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.actions button,
+.modes button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7dade;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  /* 控制条再窄也不能把按钮文案挤换行 */
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.actions button:hover,
+.modes button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.modes button.is-active {
+  background: #2f6fed;
+  border-color: #5b8df5;
+  color: #ffffff;
+}
+
+.actions button.danger:hover {
+  background: rgba(255, 59, 48, 0.85);
+}

@@ -54,6 +54,11 @@ export function createOverlayWindow(
   // 构造函数的 alwaysOnTop 只接受布尔，层级必须单独设置。
   // status 及以下在任务栏之下，popup-menu 及以上在任务栏之上 —— 遮罩必须盖住任务栏。
   win.setAlwaysOnTop(true, OVERLAY_LEVEL);
+  // 构造函数传入的宽高会被 WM_GETMINMAXINFO 钳到**工作区**（任务栏以上）
+  // —— 首次创建的遮罩会比显示器矮一条任务栏，真实任务栏从遮罩下面露出，
+  // 截图里出现两条任务栏。与 pin-window 同解：创建后紧跟 setBounds 强制落位
+  //（缓存窗口复用走的 setBounds 不受钳制，所以只有冷启动看得到）。
+  win.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
   // 遮罩自身不能被别的截图工具截进去（Win10 build 19044 支持 WDA_EXCLUDEFROMCAPTURE）
   win.setContentProtection(true);
   forwardRendererLogs(win, `overlay:${shot.displayId}`);

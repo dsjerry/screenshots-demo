@@ -18,6 +18,7 @@ import copySvg from 'lucide-static/icons/copy.svg?raw';
 import saveSvg from 'lucide-static/icons/save.svg?raw';
 import xSvg from 'lucide-static/icons/x.svg?raw';
 import pinSvg from 'lucide-static/icons/pin.svg?raw';
+import galleryVerticalSvg from 'lucide-static/icons/gallery-vertical.svg?raw';
 import squareDashedSvg from 'lucide-static/icons/square-dashed.svg?raw';
 import brushSvg from 'lucide-static/icons/brush.svg?raw';
 
@@ -46,6 +47,7 @@ const TOOL_ICONS: Record<ToolId, string> = {
 const ACTION_ICONS: Record<string, string> = {
   copy: copySvg,
   save: saveSvg,
+  scroll: galleryVerticalSvg,
   cancel: xSvg,
   pin: pinSvg,
 };
@@ -323,6 +325,10 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
     } else if (mod && key === 'c' && byId.has('copy')) {
       event.preventDefault();
       byId.get('copy')?.click();
+    } else if (mod && key === 's' && byId.has('save')) {
+      // 保存：主流工具的 Ctrl+S，快捷键面板也按这个文案展示
+      event.preventDefault();
+      byId.get('save')?.click();
     } else if (event.key === 'Delete' || event.key === 'Backspace') {
       event.preventDefault();
       editor.deleteSelected();

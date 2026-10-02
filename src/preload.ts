@@ -35,6 +35,10 @@ const api: ScreenshotsApi = {
     ready: (payload) => ipcRenderer.invoke(CH.pinReady, payload),
     action: (payload) => ipcRenderer.invoke(CH.pinAction, payload),
   },
+  scroll: {
+    frame: (cb) => on(CH.scrollFrame, cb),
+    action: (payload) => ipcRenderer.invoke(CH.scrollAction, payload),
+  },
   app: {
     state: (cb) => on(CH.appState, cb),
     startSnip: () => ipcRenderer.invoke(CH.appStartSnip),

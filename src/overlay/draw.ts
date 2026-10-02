@@ -47,15 +47,20 @@ export function renderOverlay(
 
   const payload = state.payload;
 
-  // 悬停窗口高亮：尚无选区时才画（选中后窗口捕获即退出）。
-  // 窗口矩形可能跨屏，按本窗口裁剪，出界部分由别的遮罩画。
+  // 悬停窗口捕获：把该区域的遮罩**擦掉**（恢复原图亮度，主流工具的
+  // 「点亮」效果），只画蓝框标记 —— 区域内不该再蒙着暗色遮罩。
+  // 窗口矩形可能跨屏，按本窗口裁剪，出界部分由别的遮罩负责。
   if (payload && !payload.selection && payload.hoverRect) {
     const h = intersect(payload.hoverRect, origin);
     if (h) {
       const hx = h.x - origin.x;
       const hy = h.y - origin.y;
-      ctx.fillStyle = 'rgba(47, 111, 237, 0.12)';
-      ctx.fillRect(hx, hy, h.width, h.height);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(hx, hy, h.width, h.height);
+      ctx.clip();
+      ctx.drawImage(bg, 0, 0, cssWidth, cssHeight);
+      ctx.restore();
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#2f6fed';
       ctx.strokeRect(hx + 1, hy + 1, Math.max(1, h.width - 2), Math.max(1, h.height - 2));
