@@ -71,3 +71,85 @@ body:hover .pin-close,
   background: rgba(255, 59, 48, 0.92);
   color: #ffffff;
 }
+
+/* ---------------- 标注编辑 ----------------
+   编辑按钮悬停浮现（关闭左侧）；编辑模式下画布退出原生拖拽区，
+   指针事件才能到画布上画标注，工具条浮在图像上方。 */
+.pin-edit {
+  position: absolute;
+  top: calc(var(--pad-top, 0px) + 8px);
+  right: calc(var(--pad-right, 0px) + 42px);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(20, 22, 26, 0.82);
+  color: #e8eaed;
+  font-size: 15px;
+  line-height: 26px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body:hover .pin-edit,
+.pin-edit:focus-visible {
+  opacity: 1;
+}
+
+.pin-edit:hover {
+  background: rgba(47, 111, 237, 0.92);
+  color: #ffffff;
+}
+
+body.editing .pin-edit {
+  opacity: 1;
+  background: #2f6fed;
+  color: #ffffff;
+}
+
+body.editing #stage {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: crosshair;
+}
+
+.pin-toolbar {
+  position: absolute;
+  top: calc(var(--pad-top, 0px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(24, 26, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  max-width: calc(100% - 16px);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.pin-toolbar[hidden] {
+  display: none;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+}
+
+.toolbar-row[hidden] {
+  display: none;
+}

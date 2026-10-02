@@ -7,11 +7,15 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*"
     />
     <title>pin</title>
+    <link rel="stylesheet" href="/src/annotations/annotations.css" />
     <link rel="stylesheet" href="/src/pin/pin.css" />
   </head>
   <body>
     <canvas id="stage"></canvas>
-    <!-- 钉住之后没有工具条，只剩这一个关闭按钮（悬停浮现） -->
+    <textarea id="text-editor" class="text-editor" hidden></textarea>
+    <div id="pin-toolbar" class="pin-toolbar" hidden></div>
+    <!-- 悬停浮现：标注（进编辑模式）与关闭 -->
+    <button id="edit" class="pin-edit" type="button" aria-label="标注">✎</button>
     <button id="close" class="pin-close" type="button" aria-label="关闭">
       <span aria-hidden="true">×</span>
     </button>
