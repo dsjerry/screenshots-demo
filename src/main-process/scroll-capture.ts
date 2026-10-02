@@ -4,7 +4,12 @@ import { captureDisplays } from './capture';
 import { forwardRendererLogs } from './renderer-log';
 import { pointInRect } from '../shared/selection';
 import { CH } from '../shared/channels';
-import type { DisplayShot, Rect, ScrollFramePayload } from '../shared/types';
+import type {
+  DisplayShot,
+  Rect,
+  ScrollFramePayload,
+  ScrollSpeed,
+} from '../shared/types';
 
 /**
  * 滚动截长图（参考 QQ / PixPin 的手动滚动模式）。
@@ -23,7 +28,7 @@ import type { DisplayShot, Rect, ScrollFramePayload } from '../shared/types';
 
 const FRAME_INTERVAL_MS = 250;
 /** 窗口比 .bar 的可视区大 8px，给圆角和投影留呼吸空间（见 scroll.css） */
-const BAR_WIDTH = 496;
+const BAR_WIDTH = 560;
 const BAR_HEIGHT = 88;
 
 interface ScrollState {
@@ -156,20 +161,28 @@ export function stopScrollCapture(): void {
 // ------------------------------------------------------------ 自动滚动
 
 const AUTO_SCROLL_INTERVAL_MS = 500;
-/** 每次注入的滚轮格数（一格 = WHEEL_DELTA 120，浏览器约几十像素） */
-const AUTO_SCROLL_NOTCHES = 3;
+/** 每个速度档对应的每次注入滚轮格数（一格 = WHEEL_DELTA 120） */
+const AUTO_NOTCHES: Record<ScrollSpeed, number> = {
+  slow: 1,
+  normal: 3,
+  fast: 6,
+};
 const WHEEL_DELTA = 120;
 const MOUSEEVENTF_WHEEL = 0x0800;
 
 let auto: {
   timer: NodeJS.Timeout;
+  /** 当前速度档的注入格数（speed 动作可热切换） */
+  notches: number;
   /** 上一拍的光标位置 —— 判断是用户在动鼠标还是程序上次的落点 */
   lastCursor: { x: number; y: number } | null;
 } | null = null;
+/** 自动滚动速度（未启动时切换也记着，启动即生效） */
+let autoSpeed: ScrollSpeed = 'normal';
 /** koffi / user32 只准备一次（重复注册同名 struct 会冲突） */
 let injector: {
   place(center: { x: number; y: number }): void;
-  wheel(): void;
+  wheel(notches: number): void;
 } | null = null;
 
 /**
@@ -178,7 +191,7 @@ let injector: {
  */
 async function prepareInjector(): Promise<{
   place(center: { x: number; y: number }): void;
-  wheel(): void;
+  wheel(notches: number): void;
 }> {
   if (injector) return injector;
   const koffi = (await import('koffi')).default;
@@ -200,13 +213,13 @@ async function prepareInjector(): Promise<{
     place: (center) => {
       SetCursorPos(center.x, center.y);
     },
-    wheel: () => {
+    wheel: (notches) => {
       SendInput(1, {
         type: 0,
         mi: {
           dx: 0,
           dy: 0,
-          mouseData: -WHEEL_DELTA * AUTO_SCROLL_NOTCHES,
+          mouseData: -WHEEL_DELTA * notches,
           dwFlags: MOUSEEVENTF_WHEEL,
           time: 0,
           dwExtraInfo: 0,
@@ -236,24 +249,33 @@ export async function startAutoScroll(): Promise<boolean> {
   });
   io.place(center);
   const timer = setInterval(() => {
-    if (!state) return;
+    if (!state || !auto) return;
     const cursor = screen.getCursorScreenPoint();
     // 用户在动鼠标（与上一拍位置差 > 4 DIP）→ 本拍不注入：移向控制条
     // 的路上滚动立即停手，按钮随手就能点；停住不动才继续注入
     const moved =
-      auto &&
       auto.lastCursor !== null &&
       Math.hypot(cursor.x - auto.lastCursor.x, cursor.y - auto.lastCursor.y) > 4;
-    if (auto) auto.lastCursor = cursor;
+    auto.lastCursor = cursor;
     // 光标在选区内且不在控制条上才注入 —— 悬停控制条时滚轮会打在
     // 控制条自己身上，按钮就没法点了
     if (!moved && pointInRect(region, cursor) && !pointInRect(bar, cursor)) {
-      io.wheel();
+      io.wheel(auto.notches);
     }
   }, AUTO_SCROLL_INTERVAL_MS);
-  auto = { timer, lastCursor: null };
-  console.log('[scroll] 自动滚动已启动');
+  auto = {
+    timer,
+    notches: AUTO_NOTCHES[autoSpeed],
+    lastCursor: null,
+  };
+  console.log(`[scroll] 自动滚动已启动（${autoSpeed}）`);
   return true;
+}
+
+/** 切换自动滚动速度（快/中/慢改变每次注入的滚轮格数）。 */
+export function setAutoScrollSpeed(speed: ScrollSpeed): void {
+  autoSpeed = speed;
+  if (auto) auto.notches = AUTO_NOTCHES[speed];
 }
 
 export function stopAutoScroll(): void {
@@ -281,7 +303,7 @@ async function grabFrame(): Promise<void> {
 }
 
 /** 按选区裁出物理像素条带（行拷贝，源是整屏 RGBA 位图）。 */
-function cropShot(shot: DisplayShot, region: Rect): ScrollFramePayload {
+export function cropShot(shot: DisplayShot, region: Rect): ScrollFramePayload {
   const x0 = Math.max(0, Math.round((region.x - shot.bounds.x) * shot.scaleX));
   const y0 = Math.max(0, Math.round((region.y - shot.bounds.y) * shot.scaleY));
   const x1 = Math.min(

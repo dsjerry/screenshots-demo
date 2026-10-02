@@ -1,4 +1,4 @@
-import type { ScrollFramePayload } from '../shared/types';
+import type { ScrollFramePayload, ScrollSpeed } from '../shared/types';
 
 /**
  * 滚动截长图的拼接器（控制条渲染进程）。
@@ -87,6 +87,22 @@ function setMode(next: 'manual' | 'auto'): void {
 
 modeManualBtn.addEventListener('click', () => setMode('manual'));
 modeAutoBtn.addEventListener('click', () => setMode('auto'));
+
+/** 自动滚动速度（点击速度按钮循环切换；主进程热更注入格数） */
+const SPEED_ORDER: ScrollSpeed[] = ['normal', 'fast', 'slow'];
+const SPEED_LABEL: Record<ScrollSpeed, string> = {
+  slow: '慢',
+  normal: '中',
+  fast: '快',
+};
+let speed: ScrollSpeed = 'normal';
+const speedBtn = document.getElementById('speed') as HTMLButtonElement;
+speedBtn.textContent = SPEED_LABEL[speed];
+speedBtn.addEventListener('click', () => {
+  speed = SPEED_ORDER[(SPEED_ORDER.indexOf(speed) + 1) % SPEED_ORDER.length];
+  speedBtn.textContent = SPEED_LABEL[speed];
+  void window.api.scroll.action({ kind: 'speed', speed }).catch(() => {});
+});
 
 function updateStatus(): void {
   if (!acc) return;
@@ -263,7 +279,7 @@ window.api.scroll.frame((frame: ScrollFramePayload) => {
   updateStatus();
 });
 
-async function finish(kind: 'copy' | 'save'): Promise<void> {
+async function finish(kind: 'copy' | 'save' | 'edit'): Promise<void> {
   if (!acc || acc.height === 0) return;
   const canvas = document.createElement('canvas');
   canvas.width = acc.width;
@@ -278,19 +294,24 @@ async function finish(kind: 'copy' | 'save'): Promise<void> {
   if (!blob) return;
   const png = new Uint8Array(await blob.arrayBuffer());
   try {
-    // 主进程收到后会先销毁本窗口再导出，invoke 的 Promise 可能被掐断
+    // 主进程收到后会先销毁本窗口再导出 / 转编辑，invoke 的 Promise 可能被掐断
     await window.api.scroll.action({ kind, png });
   } catch {
     /* 忽略：导出在主进程侧继续 */
   }
 }
 
-document.getElementById('copy')?.addEventListener('click', () => void finish('copy'));
-document.getElementById('save')?.addEventListener('click', () => void finish('save'));
+const copyBtn = document.getElementById('copy') as HTMLButtonElement;
+const saveBtn = document.getElementById('save') as HTMLButtonElement;
+const editBtn = document.getElementById('edit') as HTMLButtonElement;
+const cancelBtn = document.getElementById('cancel') as HTMLButtonElement;
+copyBtn.addEventListener('click', () => void finish('copy'));
+saveBtn.addEventListener('click', () => void finish('save'));
+editBtn.addEventListener('click', () => void finish('edit'));
 const cancel = (): void => {
   void window.api.scroll.action({ kind: 'cancel' }).catch(() => {});
 };
-document.getElementById('cancel')?.addEventListener('click', cancel);
+cancelBtn.addEventListener('click', cancel);
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     event.preventDefault();
