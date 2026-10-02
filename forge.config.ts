@@ -57,6 +57,8 @@ function inRuntimeClosure(file: string): boolean {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    // Squirrel 安装包的 nuspec 必需 authors；exe 元数据里的产品名
+    executableName: 'screenshots',
     // 原生 .node 不能从 asar 内加载 —— 必须解包到 app.asar.unpacked
     // （get-windows 的 N-API 二进制 + koffi 的平台包 @koromix/koffi-*）
     asar: {

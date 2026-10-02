@@ -2,7 +2,7 @@
   "name": "screenshots",
   "productName": "screenshots",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Electron 跨屏截图工具：框选标注、贴图、滚动长图、OCR",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
@@ -51,5 +51,8 @@
     "electron-winstaller@5.4.4": true,
     "get-windows@9.3.0": true,
     "koffi@3.3.2": true
+  },
+  "author": {
+    "name": "dsjerry"
   }
 }
