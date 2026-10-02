@@ -1,0 +1,79 @@
+name: Build
+
+# 打 tag（v*）发布 Release；也可在 Actions 页手动触发（仅构建 + 产物上传）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      # CI 上直接从 electron 官方 GitHub Releases 拉二进制（比 .npmrc 里的
+      # npmmirror 镜像在托管 runner 上更快更稳）
+      ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 托管 runner 的 npm 默认执行安装脚本（本地的 install-scripts 白名单
+      # 是本地 npm 特性），get-windows / koffi 的预编译二进制正常下载
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # tag 构建时把包版本同步成 tag（安装包文件名随之带上版本号）
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - name: Package (portable)
+        run: npm run package
+
+      - name: Make (Squirrel installer)
+        run: npm run make
+
+      - name: Zip portable app
+        shell: pwsh
+        run: |
+          $ver = $env:GITHUB_REF_NAME -replace '^v', ''
+          Compress-Archive -Path "out/screenshots-win32-x64/*" -DestinationPath "Screenshots-$ver-win32-x64.zip"
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "make/squirrel-windows/*.exe" dist/ -ErrorAction SilentlyContinue
+
+      - name: Upload artifacts (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            *.zip
+            dist/*.exe
+
+      - name: Create release with artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            *.zip
+            dist/*.exe

@@ -6,6 +6,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)](https://github.com/dsjerry/screenshots-demo)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F)](https://www.electronjs.org/)
+[![Build](https://github.com/dsjerry/screenshots-demo/actions/workflows/build.yml/badge.svg)](https://github.com/dsjerry/screenshots-demo/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 </div>
