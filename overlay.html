@@ -13,6 +13,16 @@
     <canvas id="stage"></canvas>
     <textarea id="text-editor" class="text-editor" hidden></textarea>
     <div id="toolbar" class="toolbar" hidden></div>
+    <div id="ocr-panel" class="ocr-panel" hidden>
+      <div class="ocr-head">
+        <span>识别结果</span>
+        <button id="ocr-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <pre id="ocr-text"></pre>
+      <div class="ocr-actions">
+        <button id="ocr-copy" type="button">复制文字</button>
+      </div>
+    </div>
     <div id="shortcut-panel" class="shortcut-panel" hidden>
       <span class="shortcut-item"><kbd>Enter</kbd>复制</span>
       <span class="shortcut-item"><kbd>Ctrl+S</kbd>保存</span>

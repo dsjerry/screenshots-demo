@@ -26,6 +26,10 @@ const textEditorEl = document.getElementById(
 const shortcutPanelEl = document.getElementById(
   'shortcut-panel',
 ) as HTMLDivElement;
+const ocrPanelEl = document.getElementById('ocr-panel') as HTMLDivElement;
+const ocrTextEl = document.getElementById('ocr-text') as HTMLPreElement;
+const ocrCopyBtn = document.getElementById('ocr-copy') as HTMLButtonElement;
+const ocrCloseBtn = document.getElementById('ocr-close') as HTMLButtonElement;
 
 let shot: DisplayShot | null = null;
 let payload: OverlaySelectionPayload | null = null;
@@ -84,10 +88,11 @@ function drawRemote(): void {
   // 草稿与编辑器同款画法：马赛克只画半透明预览，松手才像素化
   if (remoteDraft && remoteDraft.type !== 'text') {
     if (remoteDraft.type === 'mosaic') {
-      if (remoteDraft.mode === 'region') {
-        drawDraftRect(ctx, remoteDraft.x, remoteDraft.y, remoteDraft.w, remoteDraft.h);
-      } else {
+      if (remoteDraft.mode === 'brush') {
         drawDraftPath(ctx, remoteDraft.points, remoteDraft.radius);
+      } else {
+        // 选区 / 高斯模糊：半透明矩形预览
+        drawDraftRect(ctx, remoteDraft.x, remoteDraft.y, remoteDraft.w, remoteDraft.h);
       }
     } else {
       drawShape(ctx, remoteDraft);
@@ -244,6 +249,15 @@ window.addEventListener('keyup', (event) => {
 });
 window.addEventListener('blur', stopNudgeRepeat);
 
+// Tab：窗口捕获时在光标下的重叠窗口间轮换高亮
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return;
+  if (event.target instanceof HTMLTextAreaElement) return;
+  if (!shot || payload?.phase !== 'selecting' || !payload.hoverRect) return;
+  event.preventDefault();
+  void window.api.overlay.input({ kind: 'cycle-window' });
+});
+
 window.addEventListener('resize', () => {
   resize();
   paint();
@@ -389,6 +403,15 @@ function setupAnnotation(): void {
       label: '保存',
       run: () => {
         void window.api.overlay.action({ kind: 'save' });
+      },
+    },
+    {
+      id: 'ocr',
+      label: '提取文字',
+      run: () => {
+        ocrTextEl.textContent = '识别中…';
+        ocrPanelEl.hidden = false;
+        void window.api.overlay.action({ kind: 'ocr' });
       },
     },
     {
@@ -565,6 +588,29 @@ async function main(): Promise<void> {
     if (!shot || fromDisplayId === shot.displayId) return;
     remoteDraft = draft;
     paint();
+  });
+
+  // OCR 结果面板：识别中由按钮置为占位文案，这里接收最终结果
+  window.api.overlay.ocrResult(({ ok, text, error }) => {
+    ocrPanelEl.hidden = false;
+    if (ok) {
+      ocrTextEl.textContent = text && text.length > 0 ? text : '（未识别到文字）';
+    } else {
+      ocrTextEl.textContent = `识别失败：${error ?? '未知错误'}`;
+    }
+  });
+  ocrCopyBtn.addEventListener('click', () => {
+    void window.api.overlay
+      .copyText({ text: ocrTextEl.textContent ?? '' })
+      .then((res) => {
+        ocrCopyBtn.textContent = res.ok ? '已复制' : '复制失败';
+        setTimeout(() => {
+          ocrCopyBtn.textContent = '复制文字';
+        }, 1200);
+      });
+  });
+  ocrCloseBtn.addEventListener('click', () => {
+    ocrPanelEl.hidden = true;
   });
 
   // 复制 / 保存：主进程把合成数据推过来，本窗口就地拼图后回传 PNG
