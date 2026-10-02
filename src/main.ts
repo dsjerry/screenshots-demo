@@ -6,6 +6,9 @@ import { registerIpc } from './main-process/ipc';
 import { forwardRendererLogs } from './main-process/renderer-log';
 import { beginSnip, cancelSnip } from './main-process/snip-session';
 import { createTray, destroyTray } from './main-process/tray';
+import { getSettings } from './main-process/settings';
+import { openHistoryWindow } from './main-process/history';
+import { setPinsMouseIgnore } from './main-process/pin-window';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -19,8 +22,8 @@ const isDev = !!MAIN_WINDOW_VITE_DEV_SERVER_URL;
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 380,
-    height: 260,
+    width: 400,
+    height: 540,
     show: false,
     title: '截图工具',
     resizable: false,
@@ -79,7 +82,30 @@ function broadcastAppState(snipping: boolean): void {
   mainWindow.webContents.send(CH.appState, { snipping });
 }
 
-app.whenReady().then(() => {
+/** 当前生效的全局快捷键（accelerator 字符串） */
+let currentHotkey = '';
+
+/** 注册（替换）全局截图快捷键；失败返回 false 且保持原键不变。 */
+function applyHotkey(acc: string): boolean {
+  if (currentHotkey) globalShortcut.unregister(currentHotkey);
+  const ok = globalShortcut.register(acc, () => {
+    // 截图进行中再次触发 → 干净地重启会话
+    cancelSnip('shortcut-restart');
+    void beginSnip();
+  });
+  if (!ok) {
+    console.warn(`[app] 全局快捷键 ${acc} 注册失败，可能已被其他程序占用`);
+    if (currentHotkey) globalShortcut.register(currentHotkey, () => {
+      cancelSnip('shortcut-restart');
+      void beginSnip();
+    });
+    return false;
+  }
+  currentHotkey = acc;
+  return true;
+}
+
+app.whenReady().then(async () => {
   // 双开的那个实例：等待退出的过程中不再创建任何窗口 / 托盘
   if (!gotLock) return;
 
@@ -96,25 +122,25 @@ app.whenReady().then(() => {
         mainWindow.focus();
       }
     },
+    applyHotkey,
   });
 
   createMainWindow();
 
   createTray({
     onSnip: () => void beginSnip(),
+    onSnipDelay: (ms) => {
+      setTimeout(() => void beginSnip(), ms);
+    },
     onShowMain: () => showMainWindow(),
+    onHistory: () => openHistoryWindow(),
+    onRestorePins: () => setPinsMouseIgnore(false),
     getMainWindow: () => mainWindow,
   });
 
-  const registered = globalShortcut.register('Ctrl+Shift+A', () => {
-    // 截图进行中再次触发 → 干净地重启会话
-    cancelSnip('shortcut-restart');
-    void beginSnip();
-  });
-  if (!registered) {
-    // 别的程序占了这个组合键，退回按钮 / 托盘
-    console.warn('[app] 全局快捷键 Ctrl+Shift+A 注册失败，可能已被其他程序占用');
-  }
+  // 设置里的全局快捷键（注册失败时 applyHotkey 内部回退旧键并告警）
+  const settings = await getSettings();
+  applyHotkey(settings.hotkey);
 });
 
 app.on('before-quit', () => {

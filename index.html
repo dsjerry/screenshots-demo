@@ -7,16 +7,40 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
     />
     <title>截图工具</title>
+    <link rel="stylesheet" href="/src/index.css" />
   </head>
   <body>
     <main class="shell">
       <h1>截图工具</h1>
       <p class="hint">
-        快捷键 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd>，
+        快捷键 <kbd id="hotkey-kbd">Ctrl+Shift+A</kbd>，
         托盘左键亦可触发。选区可跨屏拖动。
       </p>
       <button id="start" type="button">开始截图</button>
       <p id="status" class="status" role="status"></p>
+
+      <section class="settings">
+        <h2>设置</h2>
+        <div class="row">
+          <span class="label">全局快捷键</span>
+          <button id="hotkey" type="button" class="value">Ctrl+Shift+A</button>
+        </div>
+        <div class="row">
+          <span class="label">开机自启</span>
+          <input id="autostart" type="checkbox" />
+        </div>
+        <div class="row">
+          <span class="label">保存目录</span>
+          <button id="savedir" type="button" class="value dir">…</button>
+        </div>
+        <div class="row">
+          <span class="label">默认格式</span>
+          <select id="format">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+          </select>
+        </div>
+      </section>
     </main>
     <script type="module" src="/src/renderer.ts"></script>
   </body>

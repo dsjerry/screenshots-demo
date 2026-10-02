@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron';
+import { BrowserWindow, nativeImage, screen } from 'electron';
 import type { Rectangle, WebContents } from 'electron';
 import { captureDisplays, resolveOutScale, unionBounds } from './capture';
 import {
@@ -8,12 +8,23 @@ import {
 } from './overlay-window';
 import type { OverlayHooks } from './overlay-window';
 import {
+  cropShot,
+  setAutoScrollSpeed,
   startAutoScroll,
   startScrollCapture,
   stopAutoScroll,
   stopScrollCapture,
 } from './scroll-capture';
-import { createPinWindow, loadPin, copyPng, defaultSnipName, savePng } from './pin-window';
+// pin-window 惰性引用本文件的依赖（history ↔ pin-window），此处静态导入安全
+import {
+  createPinWindow,
+  loadPin,
+  copyPng,
+  defaultSnipName,
+  savePng,
+  createPinFromImage,
+} from './pin-window';
+import { getSettings } from './settings';
 import { CH } from '../shared/channels';
 import {
   PIN_MIN_HEIGHT,
@@ -99,6 +110,9 @@ interface Session {
   hoverPoll: NodeJS.Timeout | null;
   hoverBusy: boolean;
   hoverErrorLogged: boolean;
+  /** 光标下按 z 序排列的全部窗口（Tab 轮换用） */
+  hoverCandidates: Rect[];
+  hoverIndex: number;
   /** 会话创建时刻，用于「触发 → 首窗 ready」的总耗时打点 */
   startedAt: number;
 }
@@ -292,7 +306,7 @@ async function detectHoverWindow(s: Session): Promise<void> {
   try {
     if (!getWindowsModule) getWindowsModule = await import('get-windows');
     const cursor = screen.getCursorScreenPoint();
-    let rect: Rect | null = null;
+    const candidates: Rect[] = [];
     for (const win of getWindowsModule.openWindowsSync()) {
       const b = win.bounds;
       if (b.width <= 0 || b.height <= 0) continue;
@@ -300,11 +314,14 @@ async function detectHoverWindow(s: Session): Promise<void> {
       const p2 = screen.screenToDipPoint({ x: b.x + b.width, y: b.y + b.height });
       const dip = { x: p1.x, y: p1.y, width: p2.x - p1.x, height: p2.y - p1.y };
       if (pointInRect(dip, cursor)) {
-        rect = dip;
-        break;
+        candidates.push(dip);
       }
     }
     if (session !== s) return;
+    // Tab 轮换：候选窗口数量变了（光标移动 / 开关窗口）就重置轮换位置
+    if (candidates.length !== s.hoverCandidates.length) s.hoverIndex = 0;
+    s.hoverCandidates = candidates;
+    const rect = candidates[s.hoverIndex] ?? candidates[0] ?? null;
     const changed =
       (s.hoverRect === null) !== (rect === null) ||
       (rect !== null && s.hoverRect !== null && !sameRect(rect, s.hoverRect));
@@ -519,6 +536,8 @@ export async function beginSnip(): Promise<void> {
     hoverPoll: null,
     hoverBusy: false,
     hoverErrorLogged: false,
+    hoverCandidates: [],
+    hoverIndex: 0,
     startedAt: performance.now(),
   };
 
@@ -709,6 +728,16 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
       broadcast();
       break;
     }
+    case 'cycle-window': {
+      // Tab 轮换光标下的重叠窗口（窗口捕获阶段）
+      if (s.phase !== 'selecting' || s.selection || s.mode) break;
+      const list = s.hoverCandidates;
+      if (list.length < 2) break;
+      s.hoverIndex = (s.hoverIndex + 1) % list.length;
+      s.hoverRect = list[s.hoverIndex];
+      broadcast();
+      break;
+    }
     case 'escape':
       cancelSnip('escape');
       break;
@@ -752,7 +781,54 @@ export function onOverlayAction(
     startScroll(s);
     return;
   }
+  if (kind === 'ocr') {
+    startOcr(s, sender);
+    return;
+  }
   requestExport(kind);
+}
+
+/** OCR 识别进行中（同时只允许一个） */
+let ocrBusy = false;
+
+/**
+ * OCR 提取文字：识别的是**已冻结的截图**（会话不中断、遮罩不收起），
+ * 区域与长图同款取最大交集；结果经 ocrResult 推回发起识别的遮罩。
+ */
+function startOcr(s: Session, sender: WebContents): void {
+  const sel = s.selection;
+  if (!hasRealSelection(sel) || ocrBusy) return;
+  const pick = bestRegionOnDisplay(s.shots, sel);
+  if (!pick) return;
+  ocrBusy = true;
+  void (async () => {
+    const { recognizeImagePng } = await import('./ocr');
+    // cropShot 给出 RGBA；nativeImage.createFromBitmap 要 BGRA，换回来
+    const frame = cropShot(pick.shot, pick.region);
+    const bgra = Buffer.from(frame.pixels);
+    for (let i = 0; i < bgra.length; i += 4) {
+      const b = bgra[i];
+      bgra[i] = bgra[i + 2];
+      bgra[i + 2] = b;
+    }
+    const png = nativeImage
+      .createFromBitmap(bgra, { width: frame.width, height: frame.height })
+      .toPNG();
+    const text = await recognizeImagePng(png);
+    if (!sender.isDestroyed()) {
+      sender.send(CH.ocrResult, { ok: true, text });
+    }
+  })().catch((err: unknown) => {
+    console.error('[ocr] 识别失败', err);
+    if (!sender.isDestroyed()) {
+      sender.send(CH.ocrResult, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }).finally(() => {
+    ocrBusy = false;
+  });
 }
 
 /**
@@ -764,10 +840,29 @@ export function onOverlayAction(
 function startScroll(s: Session): void {
   const sel = s.selection;
   if (!hasRealSelection(sel)) return;
+  const pick = bestRegionOnDisplay(s.shots, sel);
+  if (!pick) {
+    console.warn('[scroll] 选区无法落在单块屏内，长图未启动');
+    return;
+  }
+  stopPoll(s);
+  stopHoverPoll(s);
+  hideOverlays();
+  s.phase = 'scrolling';
+  if (!startScrollCapture(pick.shot, pick.region)) {
+    console.warn('[scroll] 启动失败（可能已在滚动中）');
+  }
+}
+
+/** 选区与各屏求最大交集（最大化窗口的隐形边框自然被裁回屏内）。 */
+function bestRegionOnDisplay(
+  shots: DisplayShot[],
+  sel: Rect,
+): { shot: DisplayShot; region: Rect } | null {
   let bestShot: DisplayShot | null = null;
   let bestRegion: Rect | null = null;
   let bestArea = 0;
-  for (const shot of s.shots) {
+  for (const shot of shots) {
     const b = shot.bounds;
     const x0 = Math.max(sel.x, b.x);
     const y0 = Math.max(sel.y, b.y);
@@ -786,16 +881,9 @@ function startScroll(s: Session): void {
     bestRegion.width < MIN_SCROLL_REGION ||
     bestRegion.height < MIN_SCROLL_REGION
   ) {
-    console.warn('[scroll] 选区无法落在单块屏内，长图未启动');
-    return;
+    return null;
   }
-  stopPoll(s);
-  stopHoverPoll(s);
-  hideOverlays();
-  s.phase = 'scrolling';
-  if (!startScrollCapture(bestShot, bestRegion)) {
-    console.warn('[scroll] 启动失败（可能已在滚动中）');
-  }
+  return { shot: bestShot, region: bestRegion };
 }
 
 /**
@@ -814,10 +902,25 @@ export async function onScrollAction(
     case 'manual':
       stopAutoScroll();
       return;
+    case 'speed':
+      setAutoScrollSpeed(payload.speed ?? 'normal');
+      return;
     case 'bottom':
       stopAutoScroll();
       console.log('[scroll] 已到底部，自动滚动停止');
       return;
+    case 'edit': {
+      // 长图二次编辑：转入独立贴图并直接进入标注编辑模式
+      const png = payload.png;
+      if (!png || png.byteLength === 0) {
+        cancelSnip('scroll-empty');
+        return;
+      }
+      stopScrollCapture();
+      cancelSnip('scroll-edit');
+      void createPinFromImage(png, true);
+      return;
+    }
     case 'cancel':
       cancelSnip('scroll-cancel');
       return;
@@ -834,7 +937,7 @@ export async function onScrollAction(
       await copyPng(png);
       console.log(`[scroll] 长图已复制 ${png.byteLength} 字节`);
     } else {
-      await savePng(null, png, defaultSnipName());
+      await savePng(null, png, defaultSnipName((await getSettings()).saveFormat));
     }
   } catch (err) {
     console.error('[scroll] 导出失败', err);
@@ -910,7 +1013,11 @@ export async function onOverlayExport(
       console.log(`[snip] 已复制 ${png.byteLength} 字节`);
       return { ok: true };
     }
-    const saved = await savePng(win, png, defaultSnipName());
+    const saved = await savePng(
+      win,
+      png,
+      defaultSnipName((await getSettings()).saveFormat),
+    );
     return saved
       ? { ok: true }
       : { ok: false, error: '已取消保存' };
@@ -1033,6 +1140,7 @@ function toImageShapes(s: Session): Shape[] {
 function mapShape(shape: Shape, dx: number, dy: number, k: number): Shape {
   switch (shape.type) {
     case 'arrow':
+    case 'line':
       return {
         ...shape,
         x1: (shape.x1 + dx) * k,
@@ -1040,6 +1148,12 @@ function mapShape(shape: Shape, dx: number, dy: number, k: number): Shape {
         x2: (shape.x2 + dx) * k,
         y2: (shape.y2 + dy) * k,
         width: shape.width * k,
+      };
+    case 'counter':
+      return {
+        ...shape,
+        x: (shape.x + dx) * k,
+        y: (shape.y + dy) * k,
       };
     case 'pen':
       return {
@@ -1197,6 +1311,7 @@ export function onPinBoot(sender: WebContents): PinInitPayload | null {
     return null;
   }
   return {
+    kind: 'snip',
     shots: s.shots,
     selection: s.selection,
     outScale: resolveOutScale(s.shots, s.selection),

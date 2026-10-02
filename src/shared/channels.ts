@@ -47,6 +47,18 @@ export const CH = {
   /** 控制条 -> 主：复制 / 保存（随带长图 PNG）/ 取消 */
   scrollAction: 'scroll:action',
 
+  /** 主窗口 -> 主：读取 / 写入应用设置 */
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  /** 主窗口 -> 主：选择保存目录（系统对话框） */
+  settingsPickDir: 'settings:pickDir',
+  /** 主 -> 遮罩：OCR 识别结果 */
+  ocrResult: 'overlay:ocrResult',
+  /** 截图历史窗口 <-> 主 */
+  historyBoot: 'history:boot',
+  historyThumb: 'history:thumb',
+  historyAction: 'history:action',
+
   pinBoot: 'pin:boot',
   pinReady: 'pin:ready',
   pinAction: 'pin:action',

@@ -8,6 +8,8 @@ declare const PIN_VITE_DEV_SERVER_URL: string;
 declare const PIN_VITE_NAME: string;
 declare const SCROLL_VITE_DEV_SERVER_URL: string;
 declare const SCROLL_VITE_NAME: string;
+declare const HISTORY_VITE_DEV_SERVER_URL: string;
+declare const HISTORY_VITE_NAME: string;
 
 // Vite 的 ?raw 后缀导入：lucide-static 的图标以原始 SVG 字符串进包
 declare module '*.svg?raw' {

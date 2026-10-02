@@ -79,7 +79,13 @@ export interface OverlaySelectionPayload {
  * - `scroll` 进入滚动截长图（遮罩收起，由专用窗口接管）
  * - `cancel` 取消
  */
-export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'scroll';
+export type OverlayActionKind =
+  | 'pin'
+  | 'cancel'
+  | 'copy'
+  | 'save'
+  | 'scroll'
+  | 'ocr';
 
 /** 遮罩就地合成导出所需的数据（主进程推给宿主遮罩）。 */
 export interface OverlayComposePayload {
@@ -98,7 +104,9 @@ export type OverlayInput =
   | { kind: 'escape' }
   | { kind: 'context' }
   /** 方向键微调选区（adjusting 阶段）：渲染端给的 DIP 增量，主进程钳制碰撞 */
-  | { kind: 'nudge'; dx: number; dy: number };
+  | { kind: 'nudge'; dx: number; dy: number }
+  /** Tab 轮换光标下的重叠窗口（窗口捕获阶段） */
+  | { kind: 'cycle-window' };
 
 export interface OverlayTeardownPayload {
   reason: 'confirm' | 'cancel';
@@ -117,12 +125,17 @@ export interface ScrollFramePayload {
 /**
  * 滚动截图控制条的动作：
  * - `auto` / `manual` 切换滚动方式（自动 = 主进程注入滚轮）
+ * - `speed` 切换自动滚动速度（speed 字段）
  * - `bottom` 自动模式下渲染端判定已到底，主进程停止注入
+ * - `edit` 把拼接好的长图送进贴图编辑模式
  * - `copy` / `save` 随带拼接完成的 PNG 结束；`cancel` 收场
  */
+export type ScrollSpeed = 'slow' | 'normal' | 'fast';
+
 export interface ScrollActionPayload {
-  kind: 'copy' | 'save' | 'cancel' | 'auto' | 'manual' | 'bottom';
+  kind: 'copy' | 'save' | 'cancel' | 'auto' | 'manual' | 'bottom' | 'edit' | 'speed';
   png?: Uint8Array;
+  speed?: ScrollSpeed;
 }
 
 /**
@@ -151,6 +164,7 @@ export interface OverlayInFlightPayload {
 }
 
 export interface PinInitPayload {
+  kind: 'snip';
   shots: DisplayShot[];
   selection: Rect;
   outScale: number;
@@ -166,14 +180,77 @@ export interface PinInitPayload {
 }
 
 export type PinAction =
-  { kind: 'copy'; png: Uint8Array } | { kind: 'save'; png: Uint8Array; suggestedName: string } | { kind: 'close' };
+  | { kind: 'copy'; png: Uint8Array }
+  | { kind: 'save'; png: Uint8Array; suggestedName: string }
+  | { kind: 'close' }
+  /** 滚轮缩放：窗口尺寸 × factor，光标下的点保持不动 */
+  | { kind: 'zoom'; factor: number }
+  /** Ctrl+滚轮 调整贴图不透明度（±delta） */
+  | { kind: 'opacity'; delta: number }
+  /** Ctrl+T 切换鼠标点击穿透 */
+  | { kind: 'ignore' };
 
 export interface PinActionResult {
   ok: boolean;
   error?: string;
 }
 
-export type ToolId = 'hand' | 'arrow' | 'rect' | 'ellipse' | 'pen' | 'mosaic' | 'text';
+/** 贴图窗口的两种来源：截图会话的拼接结果，或历史记录里的独立图片 */
+export interface PinImageInitPayload {
+  kind: 'image';
+  png: Uint8Array;
+  width: number;
+  height: number;
+  /** 打开后直接进入标注编辑模式（长图二次编辑用） */
+  editMode: boolean;
+}
+
+export type PinBootPayload = PinInitPayload | PinImageInitPayload;
+
+/** 截图历史条目信息（缩略图与原图按 id 另取） */
+export interface HistoryEntryInfo {
+  id: number;
+  width: number;
+  height: number;
+  time: number;
+}
+
+export type HistoryActionKind = 'copy' | 'pin' | 'save' | 'delete';
+
+/** OCR 识别结果（主进程推回发起识别的遮罩） */
+export interface OcrResultPayload {
+  ok: boolean;
+  text?: string;
+  error?: string;
+}
+
+/** 应用设置（主窗口设置页读写，settings.json 持久化） */
+export type SaveFormat = 'png' | 'jpg';
+
+export interface AppSettings {
+  /** 全局截图快捷键（Electron accelerator 字符串） */
+  hotkey: string;
+  /** 开机自启 */
+  autoStart: boolean;
+  /** 保存目录 */
+  saveDir: string;
+  /** 默认保存格式 */
+  saveFormat: SaveFormat;
+}
+
+export type SettingsPatch = Partial<AppSettings>;
+
+export type ToolId =
+  | 'hand'
+  | 'arrow'
+  | 'line'
+  | 'rect'
+  | 'ellipse'
+  | 'pen'
+  | 'marker'
+  | 'mosaic'
+  | 'counter'
+  | 'text';
 
 export interface StrokeBase {
   color: string;
@@ -187,8 +264,8 @@ export interface StrokeBase {
 /** 箭头样式：实心（整支填充）/ 空心（整支描边，杆身与头部同为空心） */
 export type ArrowHead = 'solid' | 'open';
 
-/** 马赛克绘制形式：选区（拖矩形）/ 涂抹（沿路径的笔刷圆斑） */
-export type MosaicMode = 'region' | 'brush';
+/** 马赛克绘制形式：选区（拖矩形）/ 涂抹（沿路径的笔刷圆斑）/ 高斯模糊 */
+export type MosaicMode = 'region' | 'brush' | 'blur';
 
 export type Shape =
   | ({ type: 'arrow' } & StrokeBase & {
@@ -198,11 +275,19 @@ export type Shape =
         y2: number;
         head: ArrowHead;
       })
+  | ({ type: 'line' } & StrokeBase & {
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+      })
   | ({ type: 'rect' } & StrokeBase & { x: number; y: number; w: number; h: number })
   | ({ type: 'ellipse' } & StrokeBase & { x: number; y: number; w: number; h: number })
   | ({ type: 'pen' } & StrokeBase & { points: Point[] })
   | ({ type: 'mosaic' } & (
       | { mode: 'region'; x: number; y: number; w: number; h: number }
       | { mode: 'brush'; points: Point[]; radius: number }
+      | { mode: 'blur'; x: number; y: number; w: number; h: number }
     ))
+  | { type: 'counter'; x: number; y: number; n: number; color: string }
   | { type: 'text'; x: number; y: number; text: string; color: string; size: number };

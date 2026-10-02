@@ -1,4 +1,8 @@
 import type {
+  AppSettings,
+  HistoryActionKind,
+  HistoryEntryInfo,
+  OcrResultPayload,
   OverlayActionKind,
   OverlayComposePayload,
   OverlayInitPayload,
@@ -9,9 +13,10 @@ import type {
   OverlayTeardownPayload,
   PinAction,
   PinActionResult,
-  PinInitPayload,
+  PinBootPayload,
   ScrollActionPayload,
   ScrollFramePayload,
+  SettingsPatch,
   Shape,
   ToolId,
 } from './types';
@@ -57,10 +62,12 @@ export interface ScreenshotsApi {
       kind: 'copy' | 'save';
       png: Uint8Array;
     }): Promise<PinActionResult>;
+    /** OCR 识别结果（识别在主进程异步进行，完成后推回） */
+    ocrResult(cb: (payload: OcrResultPayload) => void): () => void;
   };
   pin: {
-    /** 拉取拼接所需的全部数据 */
-    boot(): Promise<PinInitPayload | null>;
+    /** 拉取拼接所需的全部数据（截图会话拼接或历史独立图片） */
+    boot(): Promise<PinBootPayload | null>;
     ready(payload: { width: number; height: number }): Promise<void>;
     action(payload: PinAction): Promise<PinActionResult>;
   };
@@ -69,6 +76,20 @@ export interface ScreenshotsApi {
     frame(cb: (payload: ScrollFramePayload) => void): () => void;
     /** 复制 / 保存（随带拼接好的长图 PNG）/ 取消 */
     action(payload: ScrollActionPayload): Promise<void>;
+  };
+  history: {
+    /** 拉取历史条目列表 */
+    boot(): Promise<HistoryEntryInfo[]>;
+    /** 单条缩略图（dataURL） */
+    thumb(id: number): Promise<string>;
+    /** 复制 / 贴图 / 保存 / 删除 */
+    action(payload: { kind: HistoryActionKind; id: number }): Promise<void>;
+  };
+  settings: {
+    get(): Promise<AppSettings>;
+    set(patch: SettingsPatch): Promise<AppSettings>;
+    /** 系统目录选择对话框；取消返回 null */
+    pickDir(): Promise<string | null>;
   };
   app: {
     state(cb: (payload: { snipping: boolean }) => void): () => void;

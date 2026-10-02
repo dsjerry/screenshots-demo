@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { CH } from './shared/channels';
 import type { ScreenshotsApi } from './shared/api';
+import type { SettingsPatch } from './shared/types';
 
 function on<T>(channel: string, cb: (payload: T) => void): () => void {
   const handler = (_event: unknown, payload: T) => cb(payload);
@@ -29,6 +30,7 @@ const api: ScreenshotsApi = {
     copyText: (payload) => ipcRenderer.invoke(CH.overlayCopyText, payload),
     compose: (cb) => on(CH.overlayCompose, cb),
     export: (payload) => ipcRenderer.invoke(CH.overlayExport, payload),
+    ocrResult: (cb) => on(CH.ocrResult, cb),
   },
   pin: {
     boot: () => ipcRenderer.invoke(CH.pinBoot),
@@ -38,6 +40,16 @@ const api: ScreenshotsApi = {
   scroll: {
     frame: (cb) => on(CH.scrollFrame, cb),
     action: (payload) => ipcRenderer.invoke(CH.scrollAction, payload),
+  },
+  history: {
+    boot: () => ipcRenderer.invoke(CH.historyBoot),
+    thumb: (id) => ipcRenderer.invoke(CH.historyThumb, id),
+    action: (payload) => ipcRenderer.invoke(CH.historyAction, payload),
+  },
+  settings: {
+    get: () => ipcRenderer.invoke(CH.settingsGet),
+    set: (patch: SettingsPatch) => ipcRenderer.invoke(CH.settingsSet, patch),
+    pickDir: () => ipcRenderer.invoke(CH.settingsPickDir),
   },
   app: {
     state: (cb) => on(CH.appState, cb),

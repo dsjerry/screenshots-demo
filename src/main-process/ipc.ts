@@ -1,14 +1,19 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain, screen } from 'electron';
 import { CH } from '../shared/channels';
 import type {
+  AppSettings,
+  HistoryActionKind,
   OverlayActionKind,
   OverlayInput,
   PinAction,
-  PinInitPayload,
+  PinBootPayload,
   ScrollActionPayload,
+  SettingsPatch,
   Shape,
   ToolId,
 } from '../shared/types';
+import { getSettings, setSettings } from './settings';
+import * as history from './history';
 import {
   beginSnip,
   initSnipping,
@@ -28,12 +33,14 @@ import {
   ownsPendingPin,
   setSnipHooks,
 } from './snip-session';
-import { copyPng, copyText, defaultSnipName, savePng } from './pin-window';
+import { copyPng, copyText, defaultSnipName, savePng, takePendingImageBoot } from './pin-window';
 
 export interface AppContext {
   isMainWindow(win: BrowserWindow): boolean;
   broadcastAppState(snipping: boolean): void;
   focusMainWindow(): void;
+  /** 应用新的全局快捷键；失败（被占用等）返回 false */
+  applyHotkey(acc: string): boolean;
 }
 
 export function registerIpc(ctx: AppContext): void {
@@ -43,6 +50,49 @@ export function registerIpc(ctx: AppContext): void {
     focusMainWindow: () => ctx.focusMainWindow(),
   });
   initSnipping();
+
+  // ---------------------------------------------------------- 应用设置
+  ipcMain.handle(CH.settingsGet, () => getSettings());
+  ipcMain.handle(
+    CH.settingsSet,
+    async (_event, patch: SettingsPatch): Promise<AppSettings> => {
+      const prev = await getSettings();
+      const next = await setSettings(patch);
+      if (
+        patch.hotkey !== undefined &&
+        patch.hotkey !== prev.hotkey &&
+        !ctx.applyHotkey(next.hotkey)
+      ) {
+        // 新快捷键注册失败：回滚设置并恢复旧键，渲染进程据此提示
+        await setSettings({ hotkey: prev.hotkey });
+        ctx.applyHotkey(prev.hotkey);
+        throw new Error(`快捷键 ${patch.hotkey} 注册失败，可能已被其他程序占用`);
+      }
+      return next;
+    },
+  );
+
+  // -------------------------------------------------------- 截图历史
+  ipcMain.handle(CH.historyBoot, () => history.listEntries());
+  ipcMain.handle(CH.historyThumb, (_event, id: number) => history.thumb(id));
+  ipcMain.handle(
+    CH.historyAction,
+    (_event, payload: { kind: HistoryActionKind; id: number }) =>
+      history.runAction(payload),
+  );
+
+  // -------------------------------------------------------- 保存目录
+  ipcMain.handle(CH.settingsPickDir, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const opts: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const { canceled, filePaths } =
+      win && !win.isDestroyed()
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts);
+    return canceled ? null : (filePaths[0] ?? null);
+  });
 
   // ---------------------------------------------------------- 截图会话
   ipcMain.handle(CH.appStartSnip, () => beginSnip());
@@ -108,8 +158,11 @@ export function registerIpc(ctx: AppContext): void {
   );
 
   // ---------------------------------------------------------- 钉图窗口
-  ipcMain.handle(CH.pinBoot, (event): PinInitPayload | null =>
-    onPinBoot(event.sender),
+  ipcMain.handle(
+    CH.pinBoot,
+    (event): PinBootPayload | null =>
+      // 会话拼接优先；否则看是否为历史图片 / 长图创建的独立贴图
+      onPinBoot(event.sender) ?? takePendingImageBoot(event.sender),
   );
 
   // -------------------------------------------------------- 滚动截长图
@@ -124,6 +177,8 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(CH.pinAction, async (event, payload: PinAction) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return { ok: false, error: '窗口已关闭' };
+    // setIgnoreMouseEvents 没有查询接口，自己记账
+    const mouseIgnored = mouseIgnoredPins as WeakSet<BrowserWindow>;
 
     try {
       switch (payload.kind) {
@@ -140,6 +195,31 @@ export function registerIpc(ctx: AppContext): void {
         case 'close':
           win.close();
           return { ok: true };
+        case 'zoom': {
+          // 缩放时保持光标下的点不动（贴图放大的部位不跑）
+          const b = win.getBounds();
+          const cursor = screen.getCursorScreenPoint();
+          const f = Math.min(4, Math.max(0.25, payload.factor));
+          win.setBounds({
+            x: Math.round(cursor.x - (cursor.x - b.x) * f),
+            y: Math.round(cursor.y - (cursor.y - b.y) * f),
+            width: Math.round(b.width * f),
+            height: Math.round(b.height * f),
+          });
+          return { ok: true };
+        }
+        case 'opacity':
+          win.setOpacity(
+            Math.min(1, Math.max(0.15, win.getOpacity() + payload.delta)),
+          );
+          return { ok: true };
+        case 'ignore': {
+          const next = !mouseIgnored.has(win);
+          if (next) mouseIgnored.add(win);
+          else mouseIgnored.delete(win);
+          win.setIgnoreMouseEvents(next, { forward: next });
+          return { ok: true };
+        }
         default:
           return { ok: false, error: '未知操作' };
       }
@@ -152,3 +232,6 @@ export function registerIpc(ctx: AppContext): void {
     }
   });
 }
+
+/** 处于鼠标点击穿透状态的贴图窗口（isIgnoreMouseEvents 无查询接口） */
+const mouseIgnoredPins = new WeakSet<BrowserWindow>();

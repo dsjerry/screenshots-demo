@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*"
+    />
+    <title>截图历史</title>
+    <link rel="stylesheet" href="/src/history/history.css" />
+  </head>
+  <body>
+    <div id="list" class="list"></div>
+    <div id="empty" class="empty" hidden>暂无历史截图 —— 复制或保存后自动收录（最近 20 张）</div>
+    <script type="module" src="/src/history/history.ts"></script>
+  </body>
+</html>

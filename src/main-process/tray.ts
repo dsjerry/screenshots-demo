@@ -52,7 +52,12 @@ function buildTrayImage() {
 
 export interface TrayCallbacks {
   onSnip(): void;
+  /** 延迟 N 毫秒后触发截图 */
+  onSnipDelay(ms: number): void;
   onShowMain(): void;
+  onHistory(): void;
+  /** 全部贴图恢复鼠标（解除点击穿透） */
+  onRestorePins(): void;
   getMainWindow(): BrowserWindow | null;
 }
 
@@ -65,8 +70,12 @@ export function createTray(cb: TrayCallbacks): Tray {
 
   const menu = Menu.buildFromTemplate([
     { label: '截图', click: () => cb.onSnip() },
-    { label: '显示主窗口', click: () => cb.onShowMain() },
+    { label: '5 秒后截图', click: () => cb.onSnipDelay(5000) },
     { type: 'separator' },
+    { label: '截图历史', click: () => cb.onHistory() },
+    { label: '恢复贴图鼠标', click: () => cb.onRestorePins() },
+    { type: 'separator' },
+    { label: '显示主窗口', click: () => cb.onShowMain() },
     {
       label: '退出',
       click: () => {

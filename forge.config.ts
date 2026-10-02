@@ -120,6 +120,10 @@ const config: ForgeConfig = {
           name: 'scroll',
           config: 'vite.scroll.config.ts',
         },
+        {
+          name: 'history',
+          config: 'vite.history.config.ts',
+        },
       ],
     }),
     new FusesPlugin({

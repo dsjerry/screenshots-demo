@@ -19,16 +19,24 @@ import saveSvg from 'lucide-static/icons/save.svg?raw';
 import xSvg from 'lucide-static/icons/x.svg?raw';
 import pinSvg from 'lucide-static/icons/pin.svg?raw';
 import galleryVerticalSvg from 'lucide-static/icons/gallery-vertical.svg?raw';
+import scanTextSvg from 'lucide-static/icons/scan-text.svg?raw';
 import squareDashedSvg from 'lucide-static/icons/square-dashed.svg?raw';
 import brushSvg from 'lucide-static/icons/brush.svg?raw';
+import slashSvg from 'lucide-static/icons/slash.svg?raw';
+import highlighterSvg from 'lucide-static/icons/highlighter.svg?raw';
+import listOrderedSvg from 'lucide-static/icons/list-ordered.svg?raw';
+import dropletsSvg from 'lucide-static/icons/droplets.svg?raw';
 
 const TOOL_LABELS: Record<ToolId, string> = {
   hand: '移动',
   arrow: '箭头',
+  line: '直线',
   rect: '矩形',
   ellipse: '椭圆',
   pen: '画笔',
+  marker: '荧光笔',
   mosaic: '马赛克',
+  counter: '序号',
   text: '文字',
 };
 
@@ -36,10 +44,13 @@ const TOOL_LABELS: Record<ToolId, string> = {
 const TOOL_ICONS: Record<ToolId, string> = {
   hand: handSvg,
   arrow: arrowUpRightSvg,
+  line: slashSvg,
   rect: squareSvg,
   ellipse: circleSvg,
   pen: pencilSvg,
+  marker: highlighterSvg,
   mosaic: grid3x3Svg,
+  counter: listOrderedSvg,
   text: typeSvg,
 };
 
@@ -47,6 +58,7 @@ const TOOL_ICONS: Record<ToolId, string> = {
 const ACTION_ICONS: Record<string, string> = {
   copy: copySvg,
   save: saveSvg,
+  ocr: scanTextSvg,
   scroll: galleryVerticalSvg,
   cancel: xSvg,
   pin: pinSvg,
@@ -60,12 +72,14 @@ const ARROW_HEAD_LABELS: Record<ArrowHead, string> = {
 const MOSAIC_MODE_LABELS: Record<MosaicMode, string> = {
   region: '选区',
   brush: '涂抹',
+  blur: '模糊',
 };
 
-/** 马赛克绘制形式的图标：拖矩形 = 虚线框，涂抹 = 笔刷 */
+/** 马赛克绘制形式的图标：拖矩形 = 虚线框，涂抹 = 笔刷，模糊 = 水滴 */
 const MOSAIC_MODE_ICONS: Record<MosaicMode, string> = {
   region: squareDashedSvg,
   brush: brushSvg,
+  blur: dropletsSvg,
 };
 
 /**
@@ -75,11 +89,14 @@ const MOSAIC_MODE_ICONS: Record<MosaicMode, string> = {
 const ROW2_BY_TOOL: Record<ToolId, string[]> = {
   hand: [],
   arrow: ['head', 'width', 'color'],
+  line: ['width', 'color'],
   rect: ['width', 'color'],
   ellipse: ['width', 'color'],
   pen: ['width', 'color'],
+  marker: ['width', 'color'],
   text: ['size', 'color'],
   mosaic: ['mode'],
+  counter: ['color'],
 };
 
 /** 追加在历史组之后的动作按钮，由宿主提供。 */
