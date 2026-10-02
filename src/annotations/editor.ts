@@ -63,7 +63,18 @@ type PointerMode = 'draw' | 'move' | 'handle';
  */
 export class Editor {
   readonly canvas: HTMLCanvasElement;
-  readonly toolIds: ToolId[] = ['hand', 'arrow', 'rect', 'ellipse', 'pen', 'mosaic', 'text'];
+  readonly toolIds: ToolId[] = [
+    'hand',
+    'arrow',
+    'line',
+    'rect',
+    'ellipse',
+    'pen',
+    'marker',
+    'mosaic',
+    'counter',
+    'text',
+  ];
 
   private readonly ctx: CanvasRenderingContext2D;
   private readonly textEditor: HTMLTextAreaElement;
@@ -141,10 +152,11 @@ export class Editor {
     if (this.editing) drawShape(ctx, this.editing);
     if (this.draft) {
       if (this.draft.type === 'mosaic') {
-        if (this.draft.mode === 'region') {
-          drawDraftRect(ctx, this.draft.x, this.draft.y, this.draft.w, this.draft.h);
-        } else {
+        if (this.draft.mode === 'brush') {
           drawDraftPath(ctx, this.draft.points, this.draft.radius);
+        } else {
+          // 选区 / 高斯模糊：半透明矩形预览
+          drawDraftRect(ctx, this.draft.x, this.draft.y, this.draft.w, this.draft.h);
         }
       } else if (this.draft.type !== 'text') {
         // 文字在输入框里实时可见，画布上先不画
@@ -513,7 +525,27 @@ export class Editor {
         // 不 preventDefault 的话，浏览器会在事件派发完成后把焦点
         // 放回 body —— 输入框刚 focus 上就被 blur，立刻触发空提交
         event.preventDefault();
+        // 点在已有文字上 = 二次编辑（回填原文本，提交时原位替换）
+        const hitText = this.hitTest(p);
+        if (hitText && hitText.type === 'text') {
+          this.select(hitText);
+          this.openTextEditor(event, hitText);
+          return;
+        }
         this.openTextEditor(event);
+        return;
+      }
+
+      if (this.current === 'counter') {
+        // 序号：点击即落一个自动递增的气泡（数量随撤销/删除重算）
+        this.commit({
+          type: 'counter',
+          x: p.x,
+          y: p.y,
+          n: this.shapes.filter((s) => s.type === 'counter').length + 1,
+          color: this.color,
+        });
+        this.render();
         return;
       }
 
@@ -532,6 +564,16 @@ export class Editor {
           width: this.width,
           head: this.arrowHead,
         };
+      } else if (this.current === 'line') {
+        this.draft = {
+          type: 'line',
+          x1: p.x,
+          y1: p.y,
+          x2: p.x,
+          y2: p.y,
+          color: this.color,
+          width: this.width,
+        };
       } else if (this.current === 'pen') {
         this.draft = {
           type: 'pen',
@@ -539,15 +581,31 @@ export class Editor {
           color: this.color,
           width: this.width,
         };
+      } else if (this.current === 'marker') {
+        // 荧光笔 = 半透明加粗画笔（8 位 hex 的 alpha 通道）
+        this.draft = {
+          type: 'pen',
+          points: [p],
+          color: `${this.color}59`,
+          width: Math.max(12, this.width * 3),
+        };
       } else if (this.current === 'mosaic') {
         this.draft =
-          this.mosaicMode === 'region'
-            ? { type: 'mosaic', mode: 'region', x: p.x, y: p.y, w: 0, h: 0 }
-            : {
+          this.mosaicMode === 'brush'
+            ? {
                 type: 'mosaic',
                 mode: 'brush',
                 points: [p],
                 radius: Math.max(2, this.width),
+              }
+            : {
+                // 选区 / 高斯模糊：都是拖矩形
+                type: 'mosaic',
+                mode: this.mosaicMode,
+                x: p.x,
+                y: p.y,
+                w: 0,
+                h: 0,
               };
       } else {
         this.draft = {
@@ -589,7 +647,7 @@ export class Editor {
 
       // mode === 'draw'
       if (!this.draft) return;
-      if (this.draft.type === 'arrow') {
+      if (this.draft.type === 'arrow' || this.draft.type === 'line') {
         this.draft.x2 = p.x;
         this.draft.y2 = p.y;
       } else if (this.draft.type === 'pen') {
@@ -599,14 +657,15 @@ export class Editor {
         this.draft.w = p.x - this.draft.x;
         this.draft.h = p.y - this.draft.y;
       } else if (this.draft.type === 'mosaic') {
-        if (this.draft.mode === 'region') {
-          const start = this.penPoints[0];
-          this.draft.w = p.x - start.x;
-          this.draft.h = p.y - start.y;
-        } else {
+        if (this.draft.mode === 'brush') {
           // 涂抹与画笔同样累加路径点
           this.penPoints.push(p);
           this.draft.points = [...this.penPoints];
+        } else {
+          // 选区 / 高斯模糊：拖矩形
+          const start = this.penPoints[0];
+          this.draft.w = p.x - start.x;
+          this.draft.h = p.y - start.y;
         }
       }
       this.render();
@@ -690,19 +749,22 @@ export class Editor {
    * 2. 同一时刻只允许一个输入框 —— 再次点击画布时先把上一个提交掉，
    *    否则会堆叠监听器、旧文本被 value='' 清掉。
    */
-  private openTextEditor(event: MouseEvent): void {
+  private openTextEditor(
+    event: MouseEvent,
+    existing?: Extract<Shape, { type: 'text' }>,
+  ): void {
     console.log(`[editor] 打开文字输入框 client=${Math.round(event.clientX)},${Math.round(event.clientY)}`);
     this.closeActiveText?.();
 
     const ta = this.textEditor;
     const rect = this.canvas.getBoundingClientRect();
-    // 字号独立于线宽（线宽对文字没有意义），由行 2 的字号按钮选择
-    const fontSize = this.fontSize;
+    // 字号独立于线宽（线宽对文字没有意义），二次编辑沿用原字号
+    const fontSize = existing ? existing.size : this.fontSize;
     // 输入框字号要和「最终画上去的字号」在屏幕上一样大：
     // 钉图是图像像素空间（1 图像 px = 1/outScale CSS px），遮罩是 DIP 空间（1:1）
     const scale = this.opts.coords === 'css' || rect.width <= 0 ? 1 : rect.width / this.canvas.width;
 
-    ta.value = '';
+    ta.value = existing?.text ?? '';
     ta.hidden = false;
     const boxW = Math.max(60, fontSize * scale * 4);
     const boxH = fontSize * scale * 1.4;
@@ -714,12 +776,14 @@ export class Editor {
     ta.style.left = `${left}px`;
     ta.style.top = `${top}px`;
     ta.style.fontSize = `${fontSize * scale}px`;
-    ta.style.color = this.color;
+    ta.style.color = existing ? existing.color : this.color;
     ta.style.minWidth = `${boxW}px`;
     ta.style.minHeight = `${boxH}px`;
 
-    // 锚点跟着夹紧后的位置走：看到哪，导出就在哪
-    const origin = this.toImage({ clientX: left, clientY: top });
+    // 锚点跟着夹紧后的位置走：看到哪，导出就在哪；二次编辑锚在原文字处
+    const origin = existing
+      ? { x: existing.x, y: existing.y }
+      : this.toImage({ clientX: left, clientY: top });
     let ended = false;
     let focused = false;
 
@@ -732,16 +796,33 @@ export class Editor {
         console.log(`[editor] 文字提交 长度=${text.length}`);
         if (text) {
           const at = this.clampTextOrigin(origin, text, fontSize);
-          this.commit({
-            type: 'text',
-            x: at.x,
-            y: at.y,
-            text,
-            color: this.color,
-            size: fontSize,
-          });
-          console.log(`[editor] 新增标注 type=text 总数=${this.shapes.length}`);
-          this.render();
+          if (existing) {
+            // 二次编辑：原位替换（进历史，可撤销）
+            const idx = this.shapes.indexOf(existing);
+            if (idx >= 0) {
+              this.beginChange();
+              this.shapes[idx] = {
+                ...existing,
+                x: at.x,
+                y: at.y,
+                text,
+                size: fontSize,
+              };
+              this.onHistoryChange?.();
+              this.render();
+            }
+          } else {
+            this.commit({
+              type: 'text',
+              x: at.x,
+              y: at.y,
+              text,
+              color: this.color,
+              size: fontSize,
+            });
+            console.log(`[editor] 新增标注 type=text 总数=${this.shapes.length}`);
+            this.render();
+          }
         }
       } else {
         console.log('[editor] 文字取消');

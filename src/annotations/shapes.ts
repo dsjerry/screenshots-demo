@@ -114,6 +114,16 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
       }
       break;
     }
+    case 'line': {
+      const { x1, y1, x2, y2, color, width } = shape;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      break;
+    }
     case 'rect': {
       const r = normRect(shape.x, shape.y, shape.w, shape.h);
       ctx.strokeStyle = shape.color;
@@ -148,10 +158,29 @@ export function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
     case 'mosaic':
       if (shape.mode === 'region') {
         mosaic(ctx, shape.x, shape.y, shape.w, shape.h);
-      } else {
+      } else if (shape.mode === 'brush') {
         mosaicBrush(ctx, shape.points, shape.radius);
+      } else {
+        blurRegion(ctx, shape.x, shape.y, shape.w, shape.h);
       }
       break;
+    case 'counter': {
+      // 序号气泡：当前色的实心圆 + 白色加粗数字（半径取当前坐标空间 14px）
+      const r = 14;
+      ctx.beginPath();
+      ctx.arc(shape.x, shape.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = shape.color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px "Segoe UI", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(shape.n), shape.x, shape.y + 1);
+      break;
+    }
     case 'text': {
       ctx.fillStyle = shape.color;
       ctx.textBaseline = 'top';
@@ -242,6 +271,52 @@ function pixelatedRegion(
   octx.imageSmoothingEnabled = false;
   octx.drawImage(tmp, 0, 0, cols, rows, 0, 0, rw, rh);
   return out;
+}
+
+/**
+ * 高斯模糊区域：快照区域（外扩模糊半径防边缘发黑），clip 后带
+ * `ctx.filter = blur()` 贴回。快照的源矩形与贴回的目标矩形都要按
+ * 当前变换系数换算（同 pixelatedRegion 的坑）。
+ */
+function blurRegion(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  const r = normRect(x, y, w, h);
+  if (r.w < 2 || r.h < 2) return;
+  const radius = Math.min(40, Math.max(8, Math.round(Math.min(r.w, r.h) / 8)));
+  const pad = radius * 2;
+  const t = ctx.getTransform();
+  const kx = t.a || 1;
+  const ky = t.d || 1;
+  const sx = Math.max(0, Math.round((r.x - pad) * kx));
+  const sy = Math.max(0, Math.round((r.y - pad) * ky));
+  const sw = Math.min(ctx.canvas.width - sx, Math.round((r.w + pad * 2) * kx));
+  const sh = Math.min(
+    ctx.canvas.height - sy,
+    Math.round((r.h + pad * 2) * ky),
+  );
+  if (sw < 1 || sh < 1) return;
+
+  const snap = getScratch('blursnap', sw, sh);
+  const sctx = scratchCtx(snap);
+  if (!sctx) return;
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.clearRect(0, 0, sw, sh);
+  sctx.drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.clip();
+  ctx.filter = `blur(${radius}px)`;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(snap, 0, 0, sw, sh, sx / kx, sy / ky, sw / kx, sh / ky);
+  ctx.filter = 'none';
+  ctx.restore();
 }
 
 /** 选区式马赛克：拖出来的矩形整体像素化。 */
@@ -336,6 +411,18 @@ export function shapeBBox(shape: Shape, ctx: CanvasRenderingContext2D): Rect {
     const m = measureTextBlock(ctx, shape.text, shape.size);
     return { x: shape.x, y: shape.y, width: m.width, height: m.height };
   }
+  if (shape.type === 'counter') {
+    // 序号气泡半径（与 drawShape 一致取 14）
+    return { x: shape.x - 14, y: shape.y - 14, width: 28, height: 28 };
+  }
+  if (shape.type === 'line') {
+    return {
+      x: Math.min(shape.x1, shape.x2),
+      y: Math.min(shape.y1, shape.y2),
+      width: Math.abs(shape.x2 - shape.x1),
+      height: Math.abs(shape.y2 - shape.y1),
+    };
+  }
   if (shape.type === 'pen') {
     let minX = Infinity;
     let minY = Infinity;
@@ -359,7 +446,7 @@ export function shapeBBox(shape: Shape, ctx: CanvasRenderingContext2D): Rect {
     };
   }
   if (shape.type === 'mosaic') {
-    if (shape.mode === 'region') {
+    if (shape.mode === 'region' || shape.mode === 'blur') {
       const r = normRect(shape.x, shape.y, shape.w, shape.h);
       return { x: r.x, y: r.y, width: r.w, height: r.h };
     }
@@ -389,7 +476,12 @@ export function shapeBBox(shape: Shape, ctx: CanvasRenderingContext2D): Rect {
 
 /** 只有这几种支持拖手柄改大小；画笔 / 文字 / 马赛克只能整体移动。 */
 export function canResize(shape: Shape): boolean {
-  return shape.type === 'rect' || shape.type === 'ellipse' || shape.type === 'arrow';
+  return (
+    shape.type === 'rect' ||
+    shape.type === 'ellipse' ||
+    shape.type === 'arrow' ||
+    shape.type === 'line'
+  );
 }
 
 export function shapeHandlePoints(
@@ -397,6 +489,12 @@ export function shapeHandlePoints(
   ctx: CanvasRenderingContext2D,
 ): { id: ShapeHandle; x: number; y: number }[] {
   if (shape.type === 'arrow') {
+    return [
+      { id: 'p1', x: shape.x1, y: shape.y1 },
+      { id: 'p2', x: shape.x2, y: shape.y2 },
+    ];
+  }
+  if (shape.type === 'line') {
     return [
       { id: 'p1', x: shape.x1, y: shape.y1 },
       { id: 'p2', x: shape.x2, y: shape.y2 },
@@ -414,7 +512,7 @@ export function applyShapeHandle(
   cursor: Point,
   ctx: CanvasRenderingContext2D,
 ): Shape {
-  if (origin.type === 'arrow') {
+  if (origin.type === 'arrow' || origin.type === 'line') {
     return handle === 'p1' ? { ...origin, x1: cursor.x, y1: cursor.y } : { ...origin, x2: cursor.x, y2: cursor.y };
   }
   const box = shapeBBox(origin, ctx);
@@ -434,13 +532,14 @@ export function applyShapeHandle(
  */
 export function isShapeHit(canvas: HTMLCanvasElement, shape: Shape, p: Point, tol: number): boolean {
   if (shape.type === 'mosaic') {
-    if (shape.mode === 'region') {
+    if (shape.mode !== 'brush') {
+      // 选区 / 高斯模糊：包围盒命中
       const r = normRect(shape.x, shape.y, shape.w, shape.h);
       return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
     }
     // 涂抹：任一圆斑盖住光标即命中，半径再放宽一个容差便于点选
     const rr = shape.radius + tol;
-    return shape.points.some((q) => Math.hypot(q.x - p.x, q.y - p.y) <= rr);
+    return shape.points.some((q: Point) => Math.hypot(q.x - p.x, q.y - p.y) <= rr);
   }
 
   const x0 = Math.max(0, Math.floor(p.x - tol));
@@ -477,7 +576,7 @@ export function drawSelection(ctx: CanvasRenderingContext2D, shape: Shape, unit:
   ctx.save();
   ctx.lineWidth = 1;
 
-  if (shape.type === 'arrow') {
+  if (shape.type === 'arrow' || shape.type === 'line') {
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
     for (const p of [
@@ -509,7 +608,7 @@ export function drawSelection(ctx: CanvasRenderingContext2D, shape: Shape, unit:
 
 /** 整体平移（移动选中图形时从「按下时的副本」重算，天然不受跨帧累积影响）。 */
 export function translateShape(shape: Shape, dx: number, dy: number): Shape {
-  if (shape.type === 'arrow') {
+  if (shape.type === 'arrow' || shape.type === 'line') {
     return {
       ...shape,
       x1: shape.x1 + dx,
@@ -525,7 +624,7 @@ export function translateShape(shape: Shape, dx: number, dy: number): Shape {
     };
   }
   if (shape.type === 'mosaic') {
-    if (shape.mode === 'region') {
+    if (shape.mode !== 'brush') {
       return { ...shape, x: shape.x + dx, y: shape.y + dy };
     }
     return {
