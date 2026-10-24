@@ -10,9 +10,7 @@ const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const closeBtn = document.getElementById('close') as HTMLButtonElement;
 const editBtn = document.getElementById('edit') as HTMLButtonElement;
 const toolbarEl = document.getElementById('pin-toolbar') as HTMLDivElement;
-const textEditorEl = document.getElementById(
-  'text-editor',
-) as HTMLTextAreaElement;
+const textEditorEl = document.getElementById('text-editor') as HTMLTextAreaElement;
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
 
@@ -40,9 +38,7 @@ function repaint(): void {
 }
 
 async function exportPng(): Promise<Uint8Array> {
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, 'image/png'),
-  );
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('导出 PNG 失败');
   return new Uint8Array(await blob.arrayBuffer());
 }
@@ -96,8 +92,8 @@ window.addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
-    if (e.ctrlKey) {
-      // Ctrl+滚轮：贴图不透明度
+    if (e.ctrlKey || e.metaKey) {
+      // Ctrl/Cmd+滚轮：贴图不透明度（mac 用户习惯 Cmd）
       void window.api.pin.action({
         kind: 'opacity',
         delta: e.deltaY < 0 ? 0.1 : -0.1,
@@ -121,7 +117,7 @@ window.addEventListener('dblclick', () => {
 
 window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLTextAreaElement) return;
-  if (event.ctrlKey && event.key.toLowerCase() === 't') {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 't') {
     // 切换鼠标点击穿透；穿透后本窗口点不到，托盘「恢复贴图鼠标」可解除
     event.preventDefault();
     void window.api.pin.action({ kind: 'ignore' });
