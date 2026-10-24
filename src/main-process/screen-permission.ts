@@ -45,9 +45,10 @@ async function promptScreenPermission(): Promise<void> {
       type: 'info',
       message: '截图需要「屏幕录制」权限',
       detail:
-        'macOS 要求应用单独授权才能捕捉屏幕内容，未授权时只能截到桌面壁纸。\n\n' +
-        '请在「隐私与安全性 → 屏幕录制」列表中勾选本应用' +
-        '（开发模式下显示为 Electron），勾选后需重启应用才会生效。',
+        'macOS 要求单独授权才能捕捉屏幕内容，未授权时只能截到桌面壁纸。\n\n' +
+        '请在「隐私与安全性 → 录屏与系统录音」中勾选本应用，重启后生效。\n' +
+        '若是从终端启动的开发实例，macOS 会把权限归属到终端本身 —— ' +
+        '需要勾选的是启动它的终端应用（如 Warp / iTerm2 / Terminal）。',
       buttons: ['打开系统设置', '暂不'],
       defaultId: 0,
       cancelId: 1,
