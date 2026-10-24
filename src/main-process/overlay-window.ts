@@ -41,6 +41,12 @@ export function createOverlayWindow(
     // 不用 transparent:true（Windows 上不可靠）；画布自己铺截图做背景
     backgroundColor: '#000000',
     fullscreenable: false,
+    // macOS：AppKit 会在窗口首次上屏时把 bounds 约束进工作区（菜单栏以下），
+    // 遮罩被整体下移一条菜单栏的高度 —— 真实菜单栏从遮罩顶上露出来，和抓屏
+    // 图里的菜单栏叠成两条，且顶部区域选不到。实测（CGWindowList + 探针）只有
+    // 这个开关能跳过该约束；show 后再 setBounds / type:'panel' 都无效。遮罩
+    // 恰好等于屏幕大小，"larger than screen" 的其余语义用不上，Windows 忽略它。
+    enableLargerThanScreen: true,
     focusable: true,
     webPreferences: {
       // 与 main 同在 .vite/build 下
