@@ -265,8 +265,16 @@ function rectFrom(a: Point, b: Point): Rect {
  */
 let getWindowsModule: typeof import('get-windows') | null = null;
 
-/** 悬停轮询间隔：原生枚举全窗口，太频白烧 CPU，太慢高亮跟不上手 */
-const HOVER_POLL_MS = 64;
+/**
+ * 悬停轮询间隔：原生枚举全窗口，太频白烧 CPU，太慢高亮跟不上手。
+ * macOS 的 openWindowsSync 每次调用都要 fork 一个 Swift 子进程
+ * （get-windows 的实现），15Hz 会把主进程拖卡 —— 降到 ~7Hz，高亮
+ * 略迟但流畅；Windows 的调用便宜，维持 64ms 跟手。
+ */
+const HOVER_POLL_MS = process.platform === 'darwin' ? 150 : 64;
+
+/** openWindowsSync 慢调用告警的节流间隔（perf 排查用） */
+let lastHoverSlowWarn = 0;
 
 function startHoverPoll(s: Session): void {
   if (s.hoverPoll) return;
@@ -308,7 +316,17 @@ async function detectHoverWindow(s: Session): Promise<void> {
     if (!getWindowsModule) getWindowsModule = await import('get-windows');
     const cursor = screen.getCursorScreenPoint();
     const candidates: Rect[] = [];
-    for (const win of getWindowsModule.openWindowsSync()) {
+    const tList = performance.now();
+    const windows = getWindowsModule.openWindowsSync();
+    const listMs = Math.round(performance.now() - tList);
+    if (listMs > 20 && Date.now() - lastHoverSlowWarn > 3000) {
+      lastHoverSlowWarn = Date.now();
+      console.warn(
+        `[snip] openWindowsSync 耗时 ${listMs}ms（窗口数 ${windows.length}），` +
+          `轮询间隔 ${HOVER_POLL_MS}ms —— 主进程可能被它拖卡`,
+      );
+    }
+    for (const win of windows) {
       const b = win.bounds;
       if (b.width <= 0 || b.height <= 0) continue;
       const p1 = screen.screenToDipPoint({ x: b.x, y: b.y });
