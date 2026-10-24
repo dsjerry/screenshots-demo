@@ -9,6 +9,7 @@ import { createTray, destroyTray } from './main-process/tray';
 import { getSettings } from './main-process/settings';
 import { openHistoryWindow } from './main-process/history';
 import { setPinsMouseIgnore } from './main-process/pin-window';
+import { ensureScreenCaptureAccess } from './main-process/screen-permission';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -141,6 +142,9 @@ app.whenReady().then(async () => {
   // 设置里的全局快捷键（注册失败时 applyHotkey 内部回退旧键并告警）
   const settings = await getSettings();
   applyHotkey(settings.hotkey);
+
+  // macOS 没有「屏幕录制」权限时启动即引导授权，别等第一次截图截出壁纸才失败
+  void ensureScreenCaptureAccess();
 });
 
 app.on('before-quit', () => {

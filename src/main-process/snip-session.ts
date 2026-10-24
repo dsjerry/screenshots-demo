@@ -25,6 +25,7 @@ import {
   createPinFromImage,
 } from './pin-window';
 import { getSettings } from './settings';
+import { ensureScreenCaptureAccess } from './screen-permission';
 import { CH } from '../shared/channels';
 import {
   PIN_MIN_HEIGHT,
@@ -482,6 +483,10 @@ function finishDrag(s: Session, mode: DragMode): void {
 
 export async function beginSnip(): Promise<void> {
   if (session) cancelSnip('restart');
+
+  // macOS 10.15+ 抓屏受「屏幕录制」权限管，缺失时截出来只有桌面壁纸 ——
+  // 未授权就引导去系统设置，不起会话（非 darwin 恒通过）
+  if (!(await ensureScreenCaptureAccess())) return;
 
   // 抓屏必须发生在任何遮罩窗口创建之前，否则会把自己截进去
   hideOwnWindows();
