@@ -136,6 +136,8 @@ export interface TrayCallbacks {
   onRestorePins(): void;
   /** 收起（关闭）全部贴图 */
   onCloseAllPins(): void;
+  /** 显示「关于」窗口 */
+  onAbout(): void;
   getMainWindow(): BrowserWindow | null;
 }
 
@@ -155,6 +157,7 @@ export function createTray(cb: TrayCallbacks): Tray {
     { label: '恢复贴图鼠标', click: () => cb.onRestorePins() },
     { type: 'separator' },
     { label: '显示主窗口', click: () => cb.onShowMain() },
+    { label: '关于截图工具', click: () => cb.onAbout() },
     {
       label: '退出',
       click: () => {

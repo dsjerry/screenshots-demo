@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, nativeTheme, screen } from 'electron';
+import { app, BrowserWindow, globalShortcut, nativeTheme, screen, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { CH } from './shared/channels';
@@ -221,6 +221,94 @@ function toggleMainWindow(): void {
   }
 }
 
+const GITHUB_URL = 'https://github.com/dsjerry/screenshots-demo';
+
+let aboutWin: BrowserWindow | null = null;
+
+/** 关于页（data URL 静态页）：与 HUD 同一套玻璃视觉，链接行转系统浏览器打开。 */
+function aboutHtml(): string {
+  const logo =
+    '<svg width="40" height="40" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#2f6fed"/><path d="M3 5.5V3h2.5 M10.5 3H13v2.5 M13 10.5V13h-2.5 M5.5 13H3v-2.5" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="8" cy="8" r="1.4" fill="#fff"/></svg>';
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+* { box-sizing: border-box; }
+body { margin:0; height:100vh; display:flex; flex-direction:column; align-items:center;
+  background:rgba(22,24,29,0.5); color:#e8eaed; user-select:none; position:relative;
+  font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  -webkit-font-smoothing:antialiased; }
+.close { position:absolute; top:10px; right:10px; width:22px; height:22px; line-height:20px;
+  text-align:center; border-radius:6px; color:#a2a7ae; cursor:pointer; font-size:13px;
+  border:1px solid transparent; background:transparent; }
+.close:hover { background:rgba(255,255,255,0.08); color:#e8eaed; }
+.logo { margin-top:24px; }
+.name { margin-top:10px; font-size:15px; font-weight:600; }
+.ver { font-size:11px; color:#a2a7ae; background:rgba(255,255,255,0.08);
+  border-radius:999px; padding:1px 8px; margin-left:6px; }
+.desc { margin-top:8px; font-size:12px; line-height:1.7; color:#a2a7ae; text-align:center; }
+.rows { margin-top:14px; width:calc(100% - 48px); }
+.rows a { display:flex; justify-content:space-between; align-items:center;
+  padding:9px 12px; border-radius:8px; text-decoration:none; font-size:12px;
+  color:#d5d8dd; background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1); margin-bottom:8px; }
+.rows a:hover { background:rgba(255,255,255,0.1); color:#fff; }
+.rows .arr { color:#6d727b; }
+.foot { margin-top:auto; padding-bottom:12px; font-size:11px; color:#6d727b; }
+</style></head><body>
+<button class="close" title="关闭 (Esc)" onclick="window.close()">✕</button>
+<div class="logo">${logo}</div>
+<div class="name">截图工具<span class="ver">v${app.getVersion()}</span></div>
+<div class="desc">Electron 跨屏截图工具<br>框选标注 · 贴图 · 滚动长图 · OCR</div>
+<div class="rows">
+  <a href="${GITHUB_URL}"><span>GitHub 项目地址</span><span class="arr">↗</span></a>
+  <a href="${GITHUB_URL}/blob/master/LICENSE"><span>MIT 开源协议</span><span class="arr">↗</span></a>
+</div>
+<div class="foot">基于 Electron 构建 · MIT License</div>
+<script>document.addEventListener('keydown',function(e){if(e.key==='Escape')window.close()});</script>
+</body></html>`;
+}
+
+/** 关于窗口：自绘小面板（液态玻璃），GitHub / 协议行可直接点击打开浏览器。 */
+function showAbout(): void {
+  if (aboutWin && !aboutWin.isDestroyed()) {
+    aboutWin.focus();
+    return;
+  }
+  const win = new BrowserWindow({
+    width: 300,
+    height: 330,
+    show: false,
+    frame: false,
+    resizable: false,
+    skipTaskbar: true,
+    // linux 无玻璃材质，退化为不透明深色
+    transparent: process.platform !== 'linux',
+    backgroundColor: process.platform === 'linux' ? '#1d2026' : '#00000000',
+    webPreferences: { contextIsolation: true }, // 纯静态页，无 preload
+  });
+  aboutWin = win;
+  win.once('ready-to-show', () => win.show());
+  win.on('closed', () => {
+    if (aboutWin === win) aboutWin = null;
+  });
+  // 页内链接不放行导航：一律转交系统浏览器
+  win.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (url.startsWith('https://')) void shell.openExternal(url);
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  void win.loadURL(`data:text/html,${encodeURIComponent(aboutHtml())}`);
+  if (process.platform === 'darwin') {
+    win.webContents.once('did-finish-load', async () => {
+      if (win.isDestroyed()) return;
+      applyMacLiquidGlass(win, (await getSettings()).glassTransparency);
+    });
+  } else if (process.platform === 'win32') {
+    win.setBackgroundMaterial('acrylic');
+  }
+}
+
 // 单实例锁：双开会出现两个托盘图标、两份全局快捷键。拿不到锁说明已有
 // 实例在跑 —— 那边会收到 second-instance 并弹出主窗口，这边直接退出。
 // 注意 dev（npm start）与打包产物共用 userData（app.name 都是
@@ -300,6 +388,7 @@ app.whenReady().then(async () => {
     onHistory: () => openHistoryWindow(),
     onCloseAllPins: () => closeAllPins(),
     onRestorePins: () => setPinsMouseIgnore(false),
+    onAbout: () => showAbout(),
     getMainWindow: () => mainWindow,
   });
 
