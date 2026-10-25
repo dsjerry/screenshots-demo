@@ -1,10 +1,32 @@
+import path from 'node:path';
 import { Menu, Tray, nativeImage, app } from 'electron';
 import type { BrowserWindow, Rectangle } from 'electron';
 
 /**
+ * 托盘图标：直接用应用图标 app.png（extraResource 随包分发，dev 走仓库
+ * 路径），缩到 16px 并附 2x 表示供 hiDPI 托盘 / 菜单栏取用。
+ * 图标文件缺失 / 损坏时回退到代码绘制的位图（buildTrayImage）——
+ * 空托盘图标等于看不见应用。
+ */
+function trayIconImage(): Electron.NativeImage {
+  const p = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.png')
+    : path.join(app.getAppPath(), 'resources', 'icons', 'app.png');
+  const source = nativeImage.createFromPath(p);
+  if (source.isEmpty()) return buildTrayImage();
+  const img = source.resize({ width: 16, height: 16 });
+  img.addRepresentation({
+    scaleFactor: 2,
+    buffer: source.resize({ width: 32, height: 32 }).toPNG(),
+  });
+  return img;
+}
+
+/**
  * 16×16 内联图标：用 createFromBitmap 直接从 BGRA 像素生成，
  * 不需要任何资源文件（也就不存在打包路径问题）。
- * 图案是白框取景器 + 四向微光，底色 #2F6FED，与主图标保持同一意象。
+ * 图案是白框取景器 + 四向微光，底色 #2F6FED —— 现在只作托盘图标
+ * 文件缺失时的兜底。
  */
 function buildTrayImage() {
   const size = 16;
@@ -70,7 +92,7 @@ let tray: Tray | null = null;
 
 export function createTray(cb: TrayCallbacks): Tray {
   tray?.destroy();
-  tray = new Tray(buildTrayImage());
+  tray = new Tray(trayIconImage());
   tray.setToolTip('截图工具');
 
   const menu = Menu.buildFromTemplate([
