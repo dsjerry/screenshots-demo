@@ -1,0 +1,106 @@
+name: Release
+
+# 打 tag（v*）发布 Release —— annotated tag 的注释就是更新说明（body），
+# GitHub 自动汇总的 PR/commit 列表会追加在后面；也可在 Actions 页手动触发。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '包版本号（如 1.2.3；留空用 package.json 现值，仅影响产物命名与元数据）'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      # CI 上直接从 electron 官方 GitHub Releases 拉二进制（比 .npmrc 里的
+      # npmmirror 镜像在托管 runner 上更快更稳）
+      ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 托管 runner 的 npm 默认执行安装脚本（本地的 install-scripts 白名单
+      # 是本地 npm 特性），get-windows / koffi 的预编译二进制正常下载
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # 解析产物版本：tag 构建 = tag 本身；手动构建 = 输入值，留空用
+      # package.json 现值。产物文件名与包元数据统一用它。
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 包版本同步成解析出的版本号（--allow-same-version：同号重跑不报错）
+      - name: Sync package version
+        shell: bash
+        run: npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Package (portable)
+        run: npm run package
+
+      - name: Make (Squirrel installer)
+        run: npm run make
+
+      - name: Zip portable app
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: Compress-Archive -Path "out/screenshots-win32-x64/*" -DestinationPath "Screenshots-$env:VERSION-win32-x64.zip"
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "make/squirrel-windows/*.exe" dist/ -ErrorAction SilentlyContinue
+
+      # annotated tag 的注释即更新说明（git tag -a v1.2.3 -m "- 新增 XX"）；
+      # 轻量 tag 取到空文件也无妨 —— generate_release_notes 照常汇总
+      - name: Extract release notes from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
+
+      - name: Upload artifacts (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            *.zip
+            dist/*.exe
+
+      - name: Create release with artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          generate_release_notes: true
+          files: |
+            *.zip
+            dist/*.exe
