@@ -15,6 +15,8 @@ export interface AppSettings {
   saveDir: string;
   /** 默认保存格式 */
   saveFormat: 'png' | 'jpg';
+  /** macOS Liquid Glass 染色强度（0-100；越高越不透明） */
+  glassStrength: number;
 }
 
 const DEFAULTS: AppSettings = {
@@ -22,9 +24,15 @@ const DEFAULTS: AppSettings = {
   autoStart: false,
   saveDir: app.getPath('pictures'),
   saveFormat: 'png',
+  glassStrength: 35,
 };
 
 let cached: AppSettings | null = null;
+
+function normalizeGlassStrength(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULTS.glassStrength;
+  return Math.round(Math.max(0, Math.min(100, value)));
+}
 
 function settingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -38,12 +46,17 @@ export async function getSettings(): Promise<AppSettings> {
   } catch {
     // 首次运行 / 文件损坏：回落默认值
   }
-  cached = { ...DEFAULTS, ...loaded };
+  cached = {
+    ...DEFAULTS,
+    ...loaded,
+    glassStrength: normalizeGlassStrength(loaded.glassStrength),
+  };
   return cached;
 }
 
 export async function setSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   const next = { ...(await getSettings()), ...patch };
+  next.glassStrength = normalizeGlassStrength(next.glassStrength);
   cached = next;
   await fs.mkdir(app.getPath('userData'), { recursive: true });
   await fs.writeFile(settingsPath(), JSON.stringify(next, null, 2), 'utf8');
