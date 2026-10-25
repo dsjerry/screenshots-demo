@@ -11,8 +11,8 @@
   --control: rgba(255, 255, 255, 0.09);
   --control-border: rgba(255, 255, 255, 0.2);
   --control-hover: rgba(255, 255, 255, 0.15);
-  --glass-wash: rgba(255, 255, 255, 0.09);
-  --glass-highlight: rgba(255, 255, 255, 0.13);
+  --glass-wash: rgba(10, 18, 32, 0.24);
+  --glass-highlight: rgba(255, 255, 255, 0.12);
   --text: #e8eaed;
   --text-2: #a2a7ae;
   --text-3: #a7acb4;

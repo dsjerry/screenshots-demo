@@ -87,20 +87,20 @@
               <option value="persistent">持久化到本地</option>
             </select>
           </div>
-          <div class="row glass-row" id="glass-strength-row" hidden>
-            <label class="label" for="glass-strength">液体玻璃强度</label>
+          <div class="row glass-row" id="glass-transparency-row" hidden>
+            <label class="label" for="glass-transparency">玻璃透明度</label>
             <div class="glass-control">
               <input
-                id="glass-strength"
+                id="glass-transparency"
                 class="glass-range"
                 type="range"
                 min="0"
                 max="100"
                 step="1"
                 value="35"
-                title="强度越高，染色越明显，背景透出越少"
+                title="透明度越高，烟熏染色越淡、背景透出越多"
               />
-              <output id="glass-strength-value" for="glass-strength">35%</output>
+              <output id="glass-transparency-value" for="glass-transparency">35%</output>
             </div>
           </div>
         </div>

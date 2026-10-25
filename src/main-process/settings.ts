@@ -16,8 +16,8 @@ export interface AppSettings {
   saveDir: string;
   /** 默认保存格式 */
   saveFormat: 'png' | 'jpg';
-  /** macOS Liquid Glass 染色强度（0-100；越高越不透明） */
-  glassStrength: number;
+  /** macOS Liquid Glass 烟熏染色（0-100 透明度；越高越透、染色越淡） */
+  glassTransparency: number;
   /** 截图历史保留策略（默认仅会话内） */
   historyRetention: HistoryRetention;
 }
@@ -27,14 +27,14 @@ const DEFAULTS: AppSettings = {
   autoStart: false,
   saveDir: app.getPath('pictures'),
   saveFormat: 'png',
-  glassStrength: 35,
+  glassTransparency: 35,
   historyRetention: 'session',
 };
 
 const RETENTIONS: readonly HistoryRetention[] = ['off', 'session', 'persistent'];
 
-function normalizeGlassStrength(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULTS.glassStrength;
+function normalizeGlassTransparency(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULTS.glassTransparency;
   return Math.round(Math.max(0, Math.min(100, value)));
 }
 
@@ -59,7 +59,7 @@ export async function getSettings(): Promise<AppSettings> {
   cached = {
     ...DEFAULTS,
     ...loaded,
-    glassStrength: normalizeGlassStrength(loaded.glassStrength),
+    glassTransparency: normalizeGlassTransparency(loaded.glassTransparency),
     historyRetention: normalizeRetention(loaded.historyRetention),
   };
   return cached;
@@ -67,7 +67,7 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function setSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   const next = { ...(await getSettings()), ...patch };
-  next.glassStrength = normalizeGlassStrength(next.glassStrength);
+  next.glassTransparency = normalizeGlassTransparency(next.glassTransparency);
   next.historyRetention = normalizeRetention(next.historyRetention);
   cached = next;
   await fs.mkdir(app.getPath('userData'), { recursive: true });

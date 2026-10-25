@@ -235,8 +235,8 @@ export interface AppSettings {
   saveDir: string;
   /** 默认保存格式 */
   saveFormat: SaveFormat;
-  /** macOS Liquid Glass 染色强度（0-100；越高越不透明） */
-  glassStrength: number;
+  /** macOS Liquid Glass 烟熏染色（0-100 透明度；越高越透、染色越淡） */
+  glassTransparency: number;
   /** 截图历史保留策略（默认仅会话内 —— 隐私上保守，落盘要用户明说） */
   historyRetention: HistoryRetention;
 }

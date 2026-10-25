@@ -9,23 +9,24 @@ const autostartInput = document.getElementById('autostart') as HTMLInputElement;
 const savedirBtn = document.getElementById('savedir') as HTMLButtonElement;
 const formatSelect = document.getElementById('format') as HTMLSelectElement;
 const historyRetentionSelect = document.getElementById('history-retention') as HTMLSelectElement;
-const glassStrengthRow = document.getElementById('glass-strength-row') as HTMLDivElement;
-const glassStrengthInput = document.getElementById('glass-strength') as HTMLInputElement;
-const glassStrengthValue = document.getElementById('glass-strength-value') as HTMLOutputElement;
+const glassTransparencyRow = document.getElementById('glass-transparency-row') as HTMLDivElement;
+const glassTransparencyInput = document.getElementById('glass-transparency') as HTMLInputElement;
+const glassTransparencyValue = document.getElementById('glass-transparency-value') as HTMLOutputElement;
 
 let snipping = false;
 
 const isMac = /mac/i.test(navigator.platform);
-glassStrengthRow.hidden = !isMac;
+glassTransparencyRow.hidden = !isMac;
 
-function updateGlassStrengthPreview(strength: number): void {
-  const normalized = Math.max(0, Math.min(100, Math.round(strength)));
-  const amount = normalized / 100;
+/** 透明度 → 网页层玻璃染色：透明度低 = 烟熏加深，高 = 白色高光更亮 */
+function updateGlassTransparencyPreview(transparency: number): void {
+  const normalized = Math.max(0, Math.min(100, Math.round(transparency)));
+  const smoke = 1 - normalized / 100;
   const root = document.documentElement;
-  root.style.setProperty('--glass-wash', `rgba(255, 255, 255, ${0.02 + amount * 0.2})`);
-  root.style.setProperty('--glass-highlight', `rgba(255, 255, 255, ${0.04 + amount * 0.26})`);
-  glassStrengthInput.style.setProperty('--range-progress', `${normalized}%`);
-  glassStrengthValue.value = `${normalized}%`;
+  root.style.setProperty('--glass-wash', `rgba(10, 18, 32, ${0.04 + smoke * 0.3})`);
+  root.style.setProperty('--glass-highlight', `rgba(255, 255, 255, ${0.04 + (1 - smoke) * 0.22})`);
+  glassTransparencyInput.style.setProperty('--range-progress', `${normalized}%`);
+  glassTransparencyValue.value = `${normalized}%`;
 }
 
 /**
@@ -89,8 +90,8 @@ async function loadSettings(): Promise<void> {
   savedirBtn.title = s.saveDir;
   formatSelect.value = s.saveFormat;
   historyRetentionSelect.value = s.historyRetention;
-  glassStrengthInput.value = String(s.glassStrength);
-  updateGlassStrengthPreview(s.glassStrength);
+  glassTransparencyInput.value = String(s.glassTransparency);
+  updateGlassTransparencyPreview(s.glassTransparency);
 }
 
 autostartInput.addEventListener('change', () => {
@@ -168,15 +169,17 @@ window.addEventListener('focus', () => {
 });
 void refreshRecent();
 
-glassStrengthInput.addEventListener('input', () => {
-  updateGlassStrengthPreview(Number(glassStrengthInput.value));
+glassTransparencyInput.addEventListener('input', () => {
+  updateGlassTransparencyPreview(Number(glassTransparencyInput.value));
 });
 
-glassStrengthInput.addEventListener('change', () => {
-  void window.api.settings.set({ glassStrength: Number(glassStrengthInput.value) }).catch((err: unknown) => {
-    status(err instanceof Error ? err.message : String(err));
-    void loadSettings();
-  });
+glassTransparencyInput.addEventListener('change', () => {
+  void window.api.settings
+    .set({ glassTransparency: Number(glassTransparencyInput.value) })
+    .catch((err: unknown) => {
+      status(err instanceof Error ? err.message : String(err));
+      void loadSettings();
+    });
 });
 
 savedirBtn.addEventListener('click', () => {

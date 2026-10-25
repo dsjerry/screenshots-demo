@@ -38,17 +38,20 @@ type NativeLiquidGlass = {
   addView: (handle: Buffer, options?: { cornerRadius?: number; tintColor?: string; opaque?: boolean }) => number;
 };
 
-function applyMacLiquidGlass(win: BrowserWindow, strength: number): void {
+function applyMacLiquidGlass(win: BrowserWindow, transparency: number): void {
   try {
     // 这是原生 NSGlassEffectView 扩展，不要与 BrowserWindow vibrancy 同时启用。
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const liquidGlass = require('electron-liquid-glass') as NativeLiquidGlass;
-    const alpha = Math.round((strength / 100) * 0x70)
+    // 烟熏玻璃：染色用深色，透明度越高 alpha 越小（100 = 几乎全透）。
+    // 系统玻璃的模糊由 NSGlassEffectView 固定，能调的只有 tint 的色与浓度。
+    const smoke = (100 - Math.max(0, Math.min(100, transparency))) / 100;
+    const alpha = Math.round(smoke * 0x70)
       .toString(16)
       .padStart(2, '0');
     const glassId = liquidGlass.addView(win.getNativeWindowHandle(), {
       cornerRadius: 16,
-      tintColor: `#ffffff${alpha}`,
+      tintColor: `#0a1220${alpha}`,
     });
     if (glassId >= 0) {
       console.info(`[app] macOS Liquid Glass 已启用（view=${glassId}）`);
@@ -103,7 +106,7 @@ function createMainWindow(): void {
     if (!win || win.isDestroyed()) return;
     try {
       const settings = await getSettings();
-      if (isMac) applyMacLiquidGlass(win, settings.glassStrength);
+      if (isMac) applyMacLiquidGlass(win, settings.glassTransparency);
     } catch (error) {
       console.warn('[app] 读取设置失败，使用默认 HUD 模糊', error);
       if (isMac) win.setVibrancy('hud');
@@ -279,9 +282,9 @@ app.whenReady().then(async () => {
       }
     },
     applyHotkey,
-    applyGlassStrength: (strength) => {
+    applyGlassTransparency: (transparency) => {
       if (process.platform !== 'darwin' || !mainWindow || mainWindow.isDestroyed() || !mainWindowReady) return;
-      applyMacLiquidGlass(mainWindow, strength);
+      applyMacLiquidGlass(mainWindow, transparency);
     },
   });
 

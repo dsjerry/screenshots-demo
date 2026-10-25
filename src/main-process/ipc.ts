@@ -42,7 +42,7 @@ export interface AppContext {
   /** 应用新的全局快捷键；失败（被占用等）返回 false */
   applyHotkey(acc: string): boolean;
   /** 应用 Liquid Glass 染色强度 */
-  applyGlassStrength(strength: number): void;
+  applyGlassTransparency(transparency: number): void;
 }
 
 export function registerIpc(ctx: AppContext): void {
@@ -64,8 +64,8 @@ export function registerIpc(ctx: AppContext): void {
       ctx.applyHotkey(prev.hotkey);
       throw new Error(`快捷键 ${patch.hotkey} 注册失败，可能已被其他程序占用`);
     }
-    if (patch.glassStrength !== undefined && patch.glassStrength !== prev.glassStrength) {
-      ctx.applyGlassStrength(next.glassStrength);
+    if (patch.glassTransparency !== undefined && patch.glassTransparency !== prev.glassTransparency) {
+      ctx.applyGlassTransparency(next.glassTransparency);
     }
     if (patch.historyRetention !== undefined && patch.historyRetention !== prev.historyRetention) {
       // 切换保留策略：off/session 清盘、persistent 迁移内存条目（隐私原则见 history.ts）
