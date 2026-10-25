@@ -1,11 +1,7 @@
 import { BrowserWindow, nativeImage, screen } from 'electron';
 import type { Rectangle, WebContents } from 'electron';
 import { captureDisplays, resolveOutScale, unionBounds } from './capture';
-import {
-  acquireOverlay,
-  displayAtCursor,
-  pruneOverlayCache,
-} from './overlay-window';
+import { acquireOverlay, displayAtCursor, pruneOverlayCache } from './overlay-window';
 import type { OverlayHooks } from './overlay-window';
 import {
   cropShot,
@@ -16,32 +12,14 @@ import {
   stopScrollCapture,
 } from './scroll-capture';
 // pin-window 惰性引用本文件的依赖（history ↔ pin-window），此处静态导入安全
-import {
-  createPinWindow,
-  loadPin,
-  copyPng,
-  defaultSnipName,
-  savePng,
-  createPinFromImage,
-} from './pin-window';
+import { createPinWindow, loadPin, copyPng, defaultSnipName, savePng, createPinFromImage } from './pin-window';
 import { getSettings } from './settings';
 import { ensureScreenCaptureAccess } from './screen-permission';
 import { frontAppName, probeWindows } from './window-probe';
 import { CH } from '../shared/channels';
-import {
-  PIN_MIN_HEIGHT,
-  PIN_MIN_WIDTH,
-  PIN_SHADOW_PAD,
-} from '../shared/pin-layout';
+import { PIN_MIN_HEIGHT, PIN_MIN_WIDTH, PIN_SHADOW_PAD } from '../shared/pin-layout';
 import type { PinPadding } from '../shared/pin-layout';
-import {
-  clampRect,
-  hitHandle,
-  hitBorder,
-  moveRect,
-  pointInRect,
-  resizeRect,
-} from '../shared/selection';
+import { clampRect, hitHandle, hitBorder, moveRect, pointInRect, resizeRect } from '../shared/selection';
 import type { HandleId } from '../shared/selection';
 import type {
   DisplayShot,
@@ -237,9 +215,7 @@ function broadcast(): void {
   const payload: OverlaySelectionPayload = {
     selection: session.selection,
     cursor: screen.getCursorScreenPoint(),
-    outScale: session.selection
-      ? resolveOutScale(session.shots, session.selection)
-      : 1,
+    outScale: session.selection ? resolveOutScale(session.shots, session.selection) : 1,
     phase: session.phase,
     toolbarDisplayId: toolbarDisplayFor(session),
     activeTool: session.activeTool,
@@ -282,10 +258,7 @@ async function listHoverWindowsWin(): Promise<Rect[]> {
   if (!getWindowsModule) getWindowsModule = await import('get-windows');
   const windows = await getWindowsModule.openWindows();
   return windows
-    .filter(
-      (win) =>
-        win.owner.processId !== process.pid && win.bounds.width > 0 && win.bounds.height > 0,
-    )
+    .filter((win) => win.owner.processId !== process.pid && win.bounds.width > 0 && win.bounds.height > 0)
     .map((win) => {
       const p1 = screen.screenToDipPoint({ x: win.bounds.x, y: win.bounds.y });
       const p2 = screen.screenToDipPoint({
@@ -329,11 +302,7 @@ function stopHoverPoll(s: Session | null): void {
 async function detectHoverWindow(s: Session): Promise<void> {
   // 只有「还没框选、也没在拖」的 selecting 阶段做窗口捕获；窗口捕获
   // 待定（原地点击判定中）也要继续 —— 高亮跟着光标走，松手才采纳
-  const hoverIdle =
-    session === s &&
-    s.phase === 'selecting' &&
-    !s.selection &&
-    (!s.mode || s.mode.kind === 'window');
+  const hoverIdle = session === s && s.phase === 'selecting' && !s.selection && (!s.mode || s.mode.kind === 'window');
   if (!hoverIdle) {
     if (s.hoverRect && session === s) {
       s.hoverRect = null;
@@ -347,8 +316,7 @@ async function detectHoverWindow(s: Session): Promise<void> {
     const cursor = screen.getCursorScreenPoint();
     const tList = performance.now();
     // mac 探针是 fork+exec 子进程，用异步 spawn 等待，枚举期间 UI 照常跑
-    const rects =
-      process.platform === 'darwin' ? await listHoverWindowsMac() : await listHoverWindowsWin();
+    const rects = process.platform === 'darwin' ? await listHoverWindowsMac() : await listHoverWindowsWin();
     const listMs = Math.round(performance.now() - tList);
     if (listMs > 20 && Date.now() - lastHoverSlowWarn > 3000) {
       lastHoverSlowWarn = Date.now();
@@ -419,8 +387,7 @@ function computePinLayout(sel: Rect): PinLayout {
   const dT = fullDisplayAt({ x: midX, y });
   const dB = fullDisplayAt({ x: midX, y: y + imageH });
 
-  const pad = (room: number): number =>
-    Math.max(0, Math.min(PIN_SHADOW_PAD, Math.round(room)));
+  const pad = (room: number): number => Math.max(0, Math.min(PIN_SHADOW_PAD, Math.round(room)));
 
   const padding: PinPadding = {
     left: pad(x - dL.x),
@@ -503,18 +470,13 @@ function applyDrag(s: Session): void {
  */
 function finishDrag(s: Session, mode: DragMode): void {
   if (mode.kind === 'window') {
-    s.selection = s.hoverRect
-      ? { ...s.hoverRect }
-      : fullDisplayAt(mode.anchor);
+    s.selection = s.hoverRect ? { ...s.hoverRect } : fullDisplayAt(mode.anchor);
     s.hoverRect = null;
     s.phase = 'adjusting';
     return;
   }
   if (mode.kind === 'new' && !hasRealSelection(s.selection)) {
-    s.selection =
-      mode.prev && hasRealSelection(mode.prev)
-        ? mode.prev
-        : fullDisplayAt(mode.anchor);
+    s.selection = mode.prev && hasRealSelection(mode.prev) ? mode.prev : fullDisplayAt(mode.anchor);
   }
   s.phase = 'adjusting';
 }
@@ -662,9 +624,7 @@ export function onOverlayReady(sender: WebContents): void {
       clearTimeout(readyTimer);
       readyTimer = null;
     }
-    console.log(
-      `[snip] 触发 → 首窗 ready 总耗时 ${Math.round(performance.now() - s.startedAt)}ms`,
-    );
+    console.log(`[snip] 触发 → 首窗 ready 总耗时 ${Math.round(performance.now() - s.startedAt)}ms`);
     win.show();
     win.moveTop();
     overlayAtCursor()?.focus();
@@ -682,9 +642,7 @@ export function onOverlayReady(sender: WebContents): void {
     if (!shot) continue;
     win.webContents.send(CH.overlayRemoteShapes, {
       fromDisplayId: shot.displayId,
-      shapes: visibleRemoteShapes(s, contentsId).map((shape) =>
-        mapShape(shape, shot.bounds.x, shot.bounds.y, 1),
-      ),
+      shapes: visibleRemoteShapes(s, contentsId).map((shape) => mapShape(shape, shot.bounds.x, shot.bounds.y, 1)),
     });
   }
 }
@@ -693,9 +651,7 @@ function overlayAtCursor(): BrowserWindow | null {
   if (!session) return null;
   const displays = screen.getAllDisplays();
   const d = displayAtCursor(displays);
-  const win = session.overlays.find(
-    (w) => !w.isDestroyed() && sameRect(w.getBounds(), d.bounds),
-  );
+  const win = session.overlays.find((w) => !w.isDestroyed() && sameRect(w.getBounds(), d.bounds));
   return win ?? null;
 }
 
@@ -772,10 +728,7 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
       if (s.phase !== 'adjusting' || s.mode) break;
       const sel = s.selection;
       if (!hasRealSelection(sel)) break;
-      s.selection = clampRect(
-        { ...sel, x: sel.x + payload.dx, y: sel.y + payload.dy },
-        s.virtualBounds,
-      );
+      s.selection = clampRect({ ...sel, x: sel.x + payload.dx, y: sel.y + payload.dy }, s.virtualBounds);
       broadcast();
       break;
     }
@@ -812,10 +765,7 @@ export function onOverlayTool(sender: WebContents, tool: ToolId): void {
  * 遮罩工具条的动作。**没有「确定」** —— 复制 / 保存在遮罩里就地合成
  * （主进程只把数据推过去，拼图由遮罩渲染进程做），完成后回传 PNG。
  */
-export function onOverlayAction(
-  sender: WebContents,
-  kind: OverlayActionKind,
-): void {
+export function onOverlayAction(sender: WebContents, kind: OverlayActionKind): void {
   const s = session;
   if (!s || s.phase === 'confirming') return;
   if (!s.byContents.has(sender.id)) return;
@@ -862,24 +812,24 @@ function startOcr(s: Session, sender: WebContents): void {
       bgra[i] = bgra[i + 2];
       bgra[i + 2] = b;
     }
-    const png = nativeImage
-      .createFromBitmap(bgra, { width: frame.width, height: frame.height })
-      .toPNG();
+    const png = nativeImage.createFromBitmap(bgra, { width: frame.width, height: frame.height }).toPNG();
     const text = await recognizeImagePng(png);
     if (!sender.isDestroyed()) {
       sender.send(CH.ocrResult, { ok: true, text });
     }
-  })().catch((err: unknown) => {
-    console.error('[ocr] 识别失败', err);
-    if (!sender.isDestroyed()) {
-      sender.send(CH.ocrResult, {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }).finally(() => {
-    ocrBusy = false;
-  });
+  })()
+    .catch((err: unknown) => {
+      console.error('[ocr] 识别失败', err);
+      if (!sender.isDestroyed()) {
+        sender.send(CH.ocrResult, {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })
+    .finally(() => {
+      ocrBusy = false;
+    });
 }
 
 /**
@@ -906,10 +856,7 @@ function startScroll(s: Session): void {
 }
 
 /** 选区与各屏求最大交集（最大化窗口的隐形边框自然被裁回屏内）。 */
-function bestRegionOnDisplay(
-  shots: DisplayShot[],
-  sel: Rect,
-): { shot: DisplayShot; region: Rect } | null {
+function bestRegionOnDisplay(shots: DisplayShot[], sel: Rect): { shot: DisplayShot; region: Rect } | null {
   let bestShot: DisplayShot | null = null;
   let bestRegion: Rect | null = null;
   let bestArea = 0;
@@ -926,12 +873,7 @@ function bestRegionOnDisplay(
       bestRegion = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
     }
   }
-  if (
-    !bestShot ||
-    !bestRegion ||
-    bestRegion.width < MIN_SCROLL_REGION ||
-    bestRegion.height < MIN_SCROLL_REGION
-  ) {
+  if (!bestShot || !bestRegion || bestRegion.width < MIN_SCROLL_REGION || bestRegion.height < MIN_SCROLL_REGION) {
     return null;
   }
   return { shot: bestShot, region: bestRegion };
@@ -942,10 +884,7 @@ function bestRegionOnDisplay(
  * 已到底（停止注入），复制 / 保存（随带拼接好的长图 PNG）→ 结束截图后
  * 进剪贴板 / 存盘；取消 → 直接收场。
  */
-export async function onScrollAction(
-  _sender: WebContents,
-  payload: ScrollActionPayload,
-): Promise<void> {
+export async function onScrollAction(_sender: WebContents, payload: ScrollActionPayload): Promise<void> {
   switch (payload.kind) {
     case 'auto':
       await startAutoScroll();
@@ -1019,10 +958,7 @@ async function runExport(kind: 'copy' | 'save'): Promise<void> {
   // 分批抓屏可能还没补完 —— 与 confirmSnip 同一个坑：不等的话，
   // 晚到那块屏在拼接里就是空的
   if (pendingRest) {
-    await Promise.race([
-      pendingRest,
-      new Promise((resolve) => setTimeout(resolve, CAPTURE_WAIT_MS)),
-    ]);
+    await Promise.race([pendingRest, new Promise((resolve) => setTimeout(resolve, CAPTURE_WAIT_MS))]);
     if (session !== s) return; // 等待期间被取消 / 重开过会话
   }
 
@@ -1037,10 +973,7 @@ async function runExport(kind: 'copy' | 'save'): Promise<void> {
     if (shot.displayId !== hostDisplayId) continue;
     const win = s.byContents.get(contentsId);
     if (!win || win.isDestroyed()) continue;
-    console.log(
-      `[snip] 请求就地合成 kind=${kind} host=${hostDisplayId} ` +
-        `shapes=${data.shapes.length}`,
-    );
+    console.log(`[snip] 请求就地合成 kind=${kind} host=${hostDisplayId} ` + `shapes=${data.shapes.length}`);
     win.webContents.send(CH.overlayCompose, { kind, data });
     return;
   }
@@ -1068,15 +1001,8 @@ export async function onOverlayExport(
       console.log(`[snip] 已复制 ${png.byteLength} 字节`);
       return { ok: true };
     }
-    const saved = await savePng(
-      win,
-      png,
-      defaultSnipName((await getSettings()).saveFormat),
-      sourceApp,
-    );
-    return saved
-      ? { ok: true }
-      : { ok: false, error: '已取消保存' };
+    const saved = await savePng(win, png, defaultSnipName((await getSettings()).saveFormat), sourceApp);
+    return saved ? { ok: true } : { ok: false, error: '已取消保存' };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error(`[snip] 导出失败 kind=${kind}`, err);
@@ -1104,10 +1030,7 @@ export function onOverlayDraft(sender: WebContents, draft: Shape | null): void {
  * （导出 / 钉图用它，无需兜底），只在对其余遮罩广播时把这条滤掉，
  * 其余屏改画拖动副本 —— 不滤的话旧位、新位会叠着画两份。
  */
-export function onOverlayInFlight(
-  sender: WebContents,
-  index: number | null,
-): void {
+export function onOverlayInFlight(sender: WebContents, index: number | null): void {
   const s = session;
   if (!s) return;
   s.inFlightByContents.set(sender.id, index);
@@ -1134,9 +1057,7 @@ function broadcastRemoteShapes(s: Session, senderId: number): void {
   if (!shot) return;
   const payload: OverlayRemoteShapesPayload = {
     fromDisplayId: shot.displayId,
-    shapes: visibleRemoteShapes(s, senderId).map((shape) =>
-      mapShape(shape, shot.bounds.x, shot.bounds.y, 1),
-    ),
+    shapes: visibleRemoteShapes(s, senderId).map((shape) => mapShape(shape, shot.bounds.x, shot.bounds.y, 1)),
   };
   for (const win of s.overlays) {
     if (win.isDestroyed() || win.webContents.id === senderId) continue;
@@ -1145,11 +1066,7 @@ function broadcastRemoteShapes(s: Session, senderId: number): void {
 }
 
 /** 同上，但走的是草稿通道；`draft` 为 null 表示来源屏的草稿已结束。 */
-function broadcastRemoteDraft(
-  s: Session,
-  senderId: number,
-  draft: Shape | null,
-): void {
+function broadcastRemoteDraft(s: Session, senderId: number, draft: Shape | null): void {
   const shot = s.shotByContents.get(senderId);
   if (!shot) return;
   const payload: OverlayRemoteDraftPayload = {
@@ -1163,10 +1080,7 @@ function broadcastRemoteDraft(
 }
 
 /** 文字输入框开合 —— 打字时 Enter / Esc 交给渲染进程，别被会话吃掉。 */
-export function onOverlayEditState(
-  sender: WebContents,
-  textEditing: boolean,
-): void {
+export function onOverlayEditState(sender: WebContents, textEditing: boolean): void {
   const s = session;
   if (!s) return;
   if (textEditing) s.editText.add(sender.id);
@@ -1268,10 +1182,7 @@ async function confirmSnip(): Promise<void> {
 
   // 分批抓屏可能还没补完：不等的话，晚到那块屏在拼接里就是空的
   if (pendingRest) {
-    await Promise.race([
-      pendingRest,
-      new Promise((resolve) => setTimeout(resolve, CAPTURE_WAIT_MS)),
-    ]);
+    await Promise.race([pendingRest, new Promise((resolve) => setTimeout(resolve, CAPTURE_WAIT_MS))]);
     // 等待期间用户可能 Esc / 重开过会话
     if (session !== s) return;
   }

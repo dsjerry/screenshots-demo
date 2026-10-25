@@ -4,12 +4,7 @@ import { captureDisplays } from './capture';
 import { forwardRendererLogs } from './renderer-log';
 import { pointInRect } from '../shared/selection';
 import { CH } from '../shared/channels';
-import type {
-  DisplayShot,
-  Rect,
-  ScrollFramePayload,
-  ScrollSpeed,
-} from '../shared/types';
+import type { DisplayShot, Rect, ScrollFramePayload, ScrollSpeed } from '../shared/types';
 
 /**
  * 滚动截长图（参考 QQ / PixPin 的手动滚动模式）。
@@ -57,9 +52,7 @@ export function isScrolling(): boolean {
  */
 export function startScrollCapture(shot: DisplayShot, region: Rect): boolean {
   if (state) return false;
-  const d = screen
-    .getAllDisplays()
-    .find((x) => x.id === shot.displayId);
+  const d = screen.getAllDisplays().find((x) => x.id === shot.displayId);
   if (!d) return false;
 
   // ---- 轮廓窗：透明 + 点击穿透，纯视觉，无脚本（data URL 内联样式）
@@ -214,17 +207,21 @@ async function prepareInjector(): Promise<{
       SetCursorPos(center.x, center.y);
     },
     wheel: (notches) => {
-      SendInput(1, {
-        type: 0,
-        mi: {
-          dx: 0,
-          dy: 0,
-          mouseData: -WHEEL_DELTA * notches,
-          dwFlags: MOUSEEVENTF_WHEEL,
-          time: 0,
-          dwExtraInfo: 0,
+      SendInput(
+        1,
+        {
+          type: 0,
+          mi: {
+            dx: 0,
+            dy: 0,
+            mouseData: -WHEEL_DELTA * notches,
+            dwFlags: MOUSEEVENTF_WHEEL,
+            time: 0,
+            dwExtraInfo: 0,
+          },
         },
-      }, size);
+        size,
+      );
     },
   };
   return injector;
@@ -256,8 +253,7 @@ export async function startAutoScroll(): Promise<boolean> {
     // 用户在动鼠标（与上一拍位置差 > 4 DIP）→ 本拍不注入：移向控制条
     // 的路上滚动立即停手，按钮随手就能点；停住不动才继续注入
     const moved =
-      auto.lastCursor !== null &&
-      Math.hypot(cursor.x - auto.lastCursor.x, cursor.y - auto.lastCursor.y) > 4;
+      auto.lastCursor !== null && Math.hypot(cursor.x - auto.lastCursor.x, cursor.y - auto.lastCursor.y) > 4;
     auto.lastCursor = cursor;
     // 光标在选区内且不在控制条上才注入 —— 悬停控制条时滚轮会打在
     // 控制条自己身上，按钮就没法点了
@@ -308,33 +304,21 @@ async function grabFrame(): Promise<void> {
 export function cropShot(shot: DisplayShot, region: Rect): ScrollFramePayload {
   const x0 = Math.max(0, Math.round((region.x - shot.bounds.x) * shot.scaleX));
   const y0 = Math.max(0, Math.round((region.y - shot.bounds.y) * shot.scaleY));
-  const x1 = Math.min(
-    shot.imageWidth,
-    Math.round((region.x + region.width - shot.bounds.x) * shot.scaleX),
-  );
-  const y1 = Math.min(
-    shot.imageHeight,
-    Math.round((region.y + region.height - shot.bounds.y) * shot.scaleY),
-  );
+  const x1 = Math.min(shot.imageWidth, Math.round((region.x + region.width - shot.bounds.x) * shot.scaleX));
+  const y1 = Math.min(shot.imageHeight, Math.round((region.y + region.height - shot.bounds.y) * shot.scaleY));
   const w = Math.max(1, x1 - x0);
   const h = Math.max(1, y1 - y0);
   const out = new Uint8Array(w * h * 4);
   for (let row = 0; row < h; row++) {
     const srcStart = ((y0 + row) * shot.imageWidth + x0) * 4;
-    out.set(
-      shot.pixels.subarray(srcStart, srcStart + w * 4),
-      row * w * 4,
-    );
+    out.set(shot.pixels.subarray(srcStart, srcStart + w * 4), row * w * 4);
   }
   return { pixels: out, width: w, height: h };
 }
 
 function barBounds(region: Rect, display: Rect): Electron.Rectangle {
   const x = Math.min(
-    Math.max(
-      display.x + 8,
-      Math.round(region.x + region.width / 2 - BAR_WIDTH / 2),
-    ),
+    Math.max(display.x + 8, Math.round(region.x + region.width / 2 - BAR_WIDTH / 2)),
     display.x + display.width - BAR_WIDTH - 8,
   );
   // 默认贴选区下方；放不下翻上方，再不行贴屏底
@@ -369,8 +353,6 @@ export async function loadScrollBar(win: BrowserWindow): Promise<void> {
   if (SCROLL_VITE_DEV_SERVER_URL) {
     await win.loadURL(`${SCROLL_VITE_DEV_SERVER_URL}/scroll.html`);
   } else {
-    await win.loadFile(
-      path.join(__dirname, `../renderer/${SCROLL_VITE_NAME}/scroll.html`),
-    );
+    await win.loadFile(path.join(__dirname, `../renderer/${SCROLL_VITE_NAME}/scroll.html`));
   }
 }

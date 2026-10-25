@@ -19,10 +19,7 @@ export interface OverlayHooks {
 const cache = new Map<number, BrowserWindow>();
 
 /** 每块显示器一个遮罩窗口，bounds 严格等于 display.bounds。 */
-export function createOverlayWindow(
-  shot: DisplayShot,
-  hooks: OverlayHooks,
-): BrowserWindow {
+export function createOverlayWindow(shot: DisplayShot, hooks: OverlayHooks): BrowserWindow {
   const b = shot.bounds;
 
   const win = new BrowserWindow({
@@ -70,9 +67,7 @@ export function createOverlayWindow(
   forwardRendererLogs(win, `overlay:${shot.displayId}`);
   // 渲染进程崩溃 / 无响应时遮罩会「卡死在屏幕上」，没有这行日志就只能瞎猜
   win.webContents.on('render-process-gone', (_event, details) => {
-    console.error(
-      `[overlay:${shot.displayId}] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`,
-    );
+    console.error(`[overlay:${shot.displayId}] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`);
   });
   win.on('unresponsive', () => {
     console.warn(`[overlay:${shot.displayId}] 窗口无响应`);
@@ -108,10 +103,7 @@ export function createOverlayWindow(
  * 没有才新建。返回值里的 `load` 是「页面加载」这一步，
  * 复用时由 reload 完成，无需再 loadURL/loadFile。
  */
-export function acquireOverlay(
-  shot: DisplayShot,
-  hooks: OverlayHooks,
-): { win: BrowserWindow; load: Promise<void> } {
+export function acquireOverlay(shot: DisplayShot, hooks: OverlayHooks): { win: BrowserWindow; load: Promise<void> } {
   const b = shot.bounds;
   const cached = cache.get(shot.displayId);
   if (cached && !cached.isDestroyed()) {
@@ -144,9 +136,7 @@ export async function loadOverlay(win: BrowserWindow): Promise<void> {
     // dev 的 URL 没有 path，`/` 会被 SPA 规则解析成 index.html（主窗口），必须带文件名
     await win.loadURL(`${OVERLAY_VITE_DEV_SERVER_URL}/overlay.html`);
   } else {
-    await win.loadFile(
-      path.join(__dirname, `../renderer/${OVERLAY_VITE_NAME}/overlay.html`),
-    );
+    await win.loadFile(path.join(__dirname, `../renderer/${OVERLAY_VITE_NAME}/overlay.html`));
   }
 }
 

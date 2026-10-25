@@ -68,15 +68,11 @@ function pickSource(
   if (byId) return byId;
 
   if (sources.length !== displays.length) {
-    console.warn(
-      `[capture] display_id 匹配失败且数量不一致：sources=${sources.length} displays=${displays.length}`,
-    );
+    console.warn(`[capture] display_id 匹配失败且数量不一致：sources=${sources.length} displays=${displays.length}`);
     return null;
   }
   const idx = displays.findIndex((d) => d.id === display.id);
-  console.warn(
-    `[capture] display ${display.id} 的 display_id 为空，退化为下标 ${idx}`,
-  );
+  console.warn(`[capture] display ${display.id} 的 display_id 为空，退化为下标 ${idx}`);
   return sources[idx] ?? null;
 }
 
@@ -97,10 +93,7 @@ export interface CaptureOptions {
  * - 后续所有几何都用 `scaleX/scaleY`，绝不用 `display.scaleFactor`；
  * - 必须在对应遮罩窗口存在**之前**调用，否则会把自己截进图里。
  */
-export async function captureDisplays(
-  targets: Display[],
-  opts: CaptureOptions = {},
-): Promise<DisplayShot[]> {
+export async function captureDisplays(targets: Display[], opts: CaptureOptions = {}): Promise<DisplayShot[]> {
   const all = screen.getAllDisplays();
   const groups = groupByWant(targets);
   const shots: DisplayShot[] = [];
@@ -144,14 +137,10 @@ export async function captureDisplays(
       const tEncode = performance.now();
       const pixels = bgraToRgba(source.thumbnail.toBitmap());
       if (pixels.length !== size.width * size.height * 4) {
-        throw new Error(
-          `display ${display.id} 位图尺寸不符：${pixels.length} != ${size.width}x${size.height}x4`,
-        );
+        throw new Error(`display ${display.id} 位图尺寸不符：${pixels.length} != ${size.width}x${size.height}x4`);
       }
       if (!opts.silent) {
-        console.log(
-          `[capture] display=${display.id} 位图转换 ${Math.round(performance.now() - tEncode)}ms`,
-        );
+        console.log(`[capture] display=${display.id} 位图转换 ${Math.round(performance.now() - tEncode)}ms`);
       }
 
       shots.push({
@@ -167,9 +156,7 @@ export async function captureDisplays(
   }
 
   if (shots.length !== targets.length) {
-    throw new Error(
-      `截图数量与请求的显示器数量不一致：${shots.length} != ${targets.length}`,
-    );
+    throw new Error(`截图数量与请求的显示器数量不一致：${shots.length} != ${targets.length}`);
   }
 
   return shots;
@@ -179,10 +166,7 @@ export async function captureDisplays(
  * 输出缩放：取相交屏里的最大比例。
  * 用主屏比例会**不可逆**地丢掉 150% 屏的文字像素；放大不丢数据，缩小才丢。
  */
-export function resolveOutScale(
-  shots: DisplayShot[],
-  selection: Rect,
-): number {
+export function resolveOutScale(shots: DisplayShot[], selection: Rect): number {
   let out = 0;
   for (const shot of shots) {
     if (!intersects(shot.bounds, selection)) continue;
@@ -192,10 +176,5 @@ export function resolveOutScale(
 }
 
 export function intersects(a: Rect, b: Rect): boolean {
-  return (
-    a.x < b.x + b.width &&
-    b.x < a.x + a.width &&
-    a.y < b.y + b.height &&
-    b.y < a.y + a.height
-  );
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }

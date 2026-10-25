@@ -87,9 +87,14 @@ async function ensureLoaded(): Promise<void> {
 
 async function writeIndex(): Promise<void> {
   await fs.mkdir(imagesDir(), { recursive: true });
-  const meta: StoredMeta[] = entries.map(
-    ({ id, width, height, time, app, size }) => ({ id, width, height, time, app, size }),
-  );
+  const meta: StoredMeta[] = entries.map(({ id, width, height, time, app, size }) => ({
+    id,
+    width,
+    height,
+    time,
+    app,
+    size,
+  }));
   await fs.writeFile(indexPath(), JSON.stringify({ next: nextId, entries: meta }), 'utf8');
 }
 
@@ -235,16 +240,11 @@ async function loadHistoryWindow(win: BrowserWindow): Promise<void> {
   if (HISTORY_VITE_DEV_SERVER_URL) {
     await win.loadURL(`${HISTORY_VITE_DEV_SERVER_URL}/history.html`);
   } else {
-    await win.loadFile(
-      path.join(__dirname, `../renderer/${HISTORY_VITE_NAME}/history.html`),
-    );
+    await win.loadFile(path.join(__dirname, `../renderer/${HISTORY_VITE_NAME}/history.html`));
   }
 }
 
-export async function runAction(payload: {
-  kind: HistoryActionKind;
-  id: number;
-}): Promise<void> {
+export async function runAction(payload: { kind: HistoryActionKind; id: number }): Promise<void> {
   const e = entries.find((x) => x.id === payload.id);
   if (!e) return;
   const png = await getPng(e);

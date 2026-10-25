@@ -18,11 +18,7 @@ function decode(shot: DisplayShot): HTMLCanvasElement {
   canvas.height = shot.imageHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('无法创建拼接用画布');
-  ctx.putImageData(
-    new ImageData(new Uint8ClampedArray(shot.pixels), shot.imageWidth, shot.imageHeight),
-    0,
-    0,
-  );
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(shot.pixels), shot.imageWidth, shot.imageHeight), 0, 0);
   return canvas;
 }
 
@@ -33,9 +29,7 @@ function decode(shot: DisplayShot): HTMLCanvasElement {
  * 相邻两屏共享的那条 DIP 边，代入的是同一个表达式 → 同一个整数 → 零缝隙。
  * （如果写成 `起点 + round(宽 * scale)`，两边算出来会差 1 像素。）
  */
-export async function stitch(
-  input: StitchInput,
-): Promise<HTMLCanvasElement> {
+export async function stitch(input: StitchInput): Promise<HTMLCanvasElement> {
   const { shots, selection, outScale } = input;
   const width = Math.max(1, Math.round(selection.width * outScale));
   const height = Math.max(1, Math.round(selection.height * outScale));
@@ -76,17 +70,7 @@ export async function stitch(
     // 只有比例不一致时才做重采样，1:1 保持像素原样
     ctx.imageSmoothingEnabled = Math.abs(shot.scaleX - outScale) > 0.001;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(
-      img,
-      px0,
-      py0,
-      px1 - px0,
-      py1 - py0,
-      dx0,
-      dy0,
-      dx1 - dx0,
-      dy1 - dy0,
-    );
+    ctx.drawImage(img, px0, py0, px1 - px0, py1 - py0, dx0, dy0, dx1 - dx0, dy1 - dy0);
   }
 
   ctx.imageSmoothingEnabled = true;

@@ -1,11 +1,6 @@
 import { intersect, renderOverlay } from './draw';
 import { stitch } from '../shared/stitch';
-import {
-  HANDLE_CURSOR,
-  hitBorder,
-  hitHandleIn,
-  pointInRect,
-} from '../shared/selection';
+import { HANDLE_CURSOR, hitBorder, hitHandleIn, pointInRect } from '../shared/selection';
 import type { HandleId } from '../shared/selection';
 import { Editor } from '../annotations/editor';
 import { drawDraftPath, drawDraftRect, drawShape } from '../annotations/shapes';
@@ -26,12 +21,8 @@ const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('无法创建 canvas 2d 上下文');
 
 const toolbarEl = document.getElementById('toolbar') as HTMLDivElement;
-const textEditorEl = document.getElementById(
-  'text-editor',
-) as HTMLTextAreaElement;
-const shortcutPanelEl = document.getElementById(
-  'shortcut-panel',
-) as HTMLDivElement;
+const textEditorEl = document.getElementById('text-editor') as HTMLTextAreaElement;
+const shortcutPanelEl = document.getElementById('shortcut-panel') as HTMLDivElement;
 const ocrPanelEl = document.getElementById('ocr-panel') as HTMLDivElement;
 const ocrTextEl = document.getElementById('ocr-text') as HTMLPreElement;
 const ocrCopyBtn = document.getElementById('ocr-copy') as HTMLButtonElement;
@@ -341,8 +332,7 @@ function hitResizeZone(p: Point): HandleId | null {
 }
 
 function updateCursor(p: Point): void {
-  const adjusting =
-    shot && payload && payload.phase === 'adjusting' && payload.selection;
+  const adjusting = shot && payload && payload.phase === 'adjusting' && payload.selection;
   if (!adjusting || !shot || !payload?.selection) {
     canvas.style.cursor = '';
     return;
@@ -396,10 +386,7 @@ function syncToolbar(): void {
 
   // 默认贴选区右下；条子比选区还宽时改成**居中**贴着选区，
   // 否则右对齐会被夹到屏的左边缘（看着像跟选区没关系）
-  let x =
-    local.width >= toolbarW
-      ? local.x + local.width - toolbarW
-      : local.x + local.width / 2 - toolbarW / 2;
+  let x = local.width >= toolbarW ? local.x + local.width - toolbarW : local.x + local.width / 2 - toolbarW / 2;
   let y = local.y + local.height + 10;
   if (y + toolbarH > cssHeight) y = local.y - toolbarH - 10;
   if (y < 0) y = Math.max(8, cssHeight - toolbarH - 8);
@@ -549,10 +536,7 @@ function setupAnnotation(): void {
  * 就地合成导出（复制 / 保存）：拼图 + 把**全部**标注（各屏合并、已换算成
  * 图像像素）画上去 → 回传 PNG。整个过程不建钉图窗口，跟主流一致。
  */
-async function exportImage(
-  kind: 'copy' | 'save',
-  data: OverlayComposePayload,
-): Promise<void> {
+async function exportImage(kind: 'copy' | 'save', data: OverlayComposePayload): Promise<void> {
   try {
     console.log(
       `[overlay] 合成导出 kind=${kind} selection=` +
@@ -563,9 +547,7 @@ async function exportImage(
     const sctx = stitched.getContext('2d');
     if (sctx) for (const shape of data.shapes) drawShape(sctx, shape);
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      stitched.toBlob(resolve, 'image/png'),
-    );
+    const blob = await new Promise<Blob | null>((resolve) => stitched.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('canvas.toBlob 返回空');
     const png = new Uint8Array(await blob.arrayBuffer());
     const res = await window.api.overlay.export({ kind, png });
@@ -645,14 +627,12 @@ async function main(): Promise<void> {
     }
   });
   ocrCopyBtn.addEventListener('click', () => {
-    void window.api.overlay
-      .copyText({ text: ocrTextEl.textContent ?? '' })
-      .then((res) => {
-        ocrCopyBtn.textContent = res.ok ? '已复制' : '复制失败';
-        setTimeout(() => {
-          ocrCopyBtn.textContent = '复制文字';
-        }, 1200);
-      });
+    void window.api.overlay.copyText({ text: ocrTextEl.textContent ?? '' }).then((res) => {
+      ocrCopyBtn.textContent = res.ok ? '已复制' : '复制失败';
+      setTimeout(() => {
+        ocrCopyBtn.textContent = '复制文字';
+      }, 1200);
+    });
   });
   ocrCloseBtn.addEventListener('click', () => {
     ocrPanelEl.hidden = true;
@@ -665,9 +645,7 @@ async function main(): Promise<void> {
 
   paint();
   await window.api.overlay.ready();
-  console.log(
-    `[overlay] 初始化（boot→解码→ready）${Math.round(performance.now() - tInit)}ms`,
-  );
+  console.log(`[overlay] 初始化（boot→解码→ready）${Math.round(performance.now() - tInit)}ms`);
 }
 
 // ---------------------------------------------------------------- 放大镜
@@ -720,18 +698,12 @@ function colorHex(c: { r: number; g: number; b: number }): string {
 }
 
 /** 复制到剪贴板的值，不带标签：`#AABBCC` 或 `170, 187, 204` */
-function colorValue(
-  c: { r: number; g: number; b: number },
-  fmt: 'hex' | 'rgb',
-): string {
+function colorValue(c: { r: number; g: number; b: number }, fmt: 'hex' | 'rgb'): string {
   return fmt === 'hex' ? colorHex(c) : `${c.r}, ${c.g}, ${c.b}`;
 }
 
 /** 页脚显示的文本，带标签便于分辨当前格式 */
-function colorLabel(
-  c: { r: number; g: number; b: number },
-  fmt: 'hex' | 'rgb',
-): string {
+function colorLabel(c: { r: number; g: number; b: number }, fmt: 'hex' | 'rgb'): string {
   return fmt === 'hex' ? `HEX: ${colorHex(c)}` : `RGB: ${colorValue(c, 'rgb')}`;
 }
 
@@ -784,12 +756,10 @@ function updateMagnifier(p: Point): void {
   // 2. 已有选区且处于 adjusting、光标落在选区的本屏部分内 —— 选区内
   //    擦掉了遮罩，取色依然有意义；选区外是遮罩，放大镜没有存在意义。
   // 重新框选（selecting 且已有选区）不显示，高亮框待定时也不显示。
-  let show =
-    !!shot && !!bg && !!magCtx && !!payload?.phase && !payload.hoverRect;
+  let show = !!shot && !!bg && !!magCtx && !!payload?.phase && !payload.hoverRect;
   if (show && payload?.selection) {
     const local = selectionLocal();
-    show =
-      payload.phase === 'adjusting' && !!local && pointInRect(local, p);
+    show = payload.phase === 'adjusting' && !!local && pointInRect(local, p);
   }
   if (!show || !shot || !bg || !magCtx || !payload) {
     magEl.hidden = true;

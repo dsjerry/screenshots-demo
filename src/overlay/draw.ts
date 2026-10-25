@@ -142,8 +142,7 @@ function drawSizeLabel(
   const outH = Math.round(sel.height * payload.outScale);
   const text = `${outW} × ${outH}`;
 
-  ctx.font =
-    '12px "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif';
+  ctx.font = '12px "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif';
   const tw = ctx.measureText(text).width;
   const boxW = Math.ceil(tw) + 14;
   const boxH = 20;
@@ -152,10 +151,7 @@ function drawSizeLabel(
   let x: number;
   let y: number;
   const cornerInThisDisplay =
-    sel.x >= origin.x &&
-    sel.x < origin.x + origin.width &&
-    sel.y >= origin.y &&
-    sel.y < origin.y + origin.height;
+    sel.x >= origin.x && sel.x < origin.x + origin.width && sel.y >= origin.y && sel.y < origin.y + origin.height;
   if (cornerInThisDisplay) {
     x = sel.x - origin.x + 6;
     y = sel.y - origin.y + 6;

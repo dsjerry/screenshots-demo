@@ -45,11 +45,7 @@ export function handlePoint(rect: Rect, id: HandleId): Point {
 }
 
 /** 主进程用：光标落在哪个手柄上（不限定显示在不在本屏）。 */
-export function hitHandle(
-  rect: Rect,
-  p: Point,
-  threshold = HANDLE_HIT_DIP,
-): HandleId | null {
+export function hitHandle(rect: Rect, p: Point, threshold = HANDLE_HIT_DIP): HandleId | null {
   if (rect.width <= 0 || rect.height <= 0) return null;
   for (const id of HANDLE_IDS) {
     const h = handlePoint(rect, id);
@@ -68,11 +64,7 @@ export const BORDER_HIT_DIP = 6;
  * 整条边框都成为调整大小的操作位（标准的窗口缩放交互）。光标与按下
  * 路由必须走同一套组合（先 hitHandle 后 hitBorder），否则会错位。
  */
-export function hitBorder(
-  rect: Rect,
-  p: Point,
-  threshold = BORDER_HIT_DIP,
-): HandleId | null {
+export function hitBorder(rect: Rect, p: Point, threshold = BORDER_HIT_DIP): HandleId | null {
   if (rect.width <= 0 || rect.height <= 0) return null;
   const nearL = Math.abs(p.x - rect.x) <= threshold;
   const nearR = Math.abs(p.x - (rect.x + rect.width)) <= threshold;
@@ -118,12 +110,7 @@ export function hitHandleIn(
 }
 
 export function pointInRect(rect: Rect, p: Point): boolean {
-  return (
-    p.x >= rect.x &&
-    p.x <= rect.x + rect.width &&
-    p.y >= rect.y &&
-    p.y <= rect.y + rect.height
-  );
+  return p.x >= rect.x && p.x <= rect.x + rect.width && p.y >= rect.y && p.y <= rect.y + rect.height;
 }
 
 /** 整体移动：按「按下点 → 当前光标」的位移平移原矩形。 */
@@ -147,11 +134,7 @@ export function clampRect(rect: Rect, bounds: Rect): Rect {
 }
 
 /** 拖动手柄调整：对侧的边固定，被拖的边/角跟着光标走，允许反向拖动翻转。 */
-export function resizeRect(
-  origin: Rect,
-  handle: HandleId,
-  cursor: Point,
-): Rect {
+export function resizeRect(origin: Rect, handle: HandleId, cursor: Point): Rect {
   let left = origin.x;
   let top = origin.y;
   let right = origin.x + origin.width;

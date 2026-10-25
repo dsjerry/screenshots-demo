@@ -82,10 +82,7 @@ let scriptPath: string | null = null;
 
 async function ensureScript(): Promise<string> {
   if (scriptPath) return scriptPath;
-  const p = path.join(
-    app.getPath('temp'),
-    `screenshots-ocr.${isMac ? 'js' : 'ps1'}`,
-  );
+  const p = path.join(app.getPath('temp'), `screenshots-ocr.${isMac ? 'js' : 'ps1'}`);
   await fs.writeFile(p, isMac ? JXA_SCRIPT : PS_SCRIPT, 'utf8');
   scriptPath = p;
   return p;
@@ -93,10 +90,7 @@ async function ensureScript(): Promise<string> {
 
 export async function recognizeImagePng(png: Buffer): Promise<string> {
   const script = await ensureScript();
-  const imgPath = path.join(
-    app.getPath('temp'),
-    `ocr-${Date.now()}-${Math.random().toString(36).slice(2)}.png`,
-  );
+  const imgPath = path.join(app.getPath('temp'), `ocr-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
   await fs.writeFile(imgPath, png);
   try {
     return await new Promise<string>((resolve, reject) => {
@@ -104,23 +98,18 @@ export async function recognizeImagePng(png: Buffer): Promise<string> {
         isMac ? 'osascript' : 'powershell.exe',
         isMac
           ? ['-l', 'JavaScript', script, imgPath]
-          : [
-              '-NoProfile',
-              '-NonInteractive',
-              '-ExecutionPolicy',
-              'Bypass',
-              '-File',
-              script,
-              imgPath,
-            ],
+          : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, imgPath],
         { windowsHide: true },
       );
       let out = '';
       let err = '';
-      const timer = setTimeout(() => {
-        child.kill();
-        reject(new Error('OCR 超时'));
-      }, isMac ? 60000 : 20000);
+      const timer = setTimeout(
+        () => {
+          child.kill();
+          reject(new Error('OCR 超时'));
+        },
+        isMac ? 60000 : 20000,
+      );
       child.stdout.on('data', (d: Buffer) => {
         out += String(d);
       });

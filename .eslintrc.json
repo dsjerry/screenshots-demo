@@ -14,9 +14,6 @@
   ],
   "parser": "@typescript-eslint/parser",
   "rules": {
-    "import/no-unresolved": [
-      "error",
-      { "ignore": ["\\.svg\\?raw$"] }
-    ]
+    "import/no-unresolved": ["error", { "ignore": ["\\.svg\\?raw$"] }]
   }
 }

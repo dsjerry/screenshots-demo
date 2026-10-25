@@ -62,8 +62,7 @@ async function refresh(): Promise<void> {
     dims.textContent = `${entry.width} × ${entry.height}`;
     const time = document.createElement('span');
     time.className = 'time';
-    time.textContent =
-      (entry.app ? `${entry.app} · ` : '') + new Date(entry.time).toLocaleTimeString();
+    time.textContent = (entry.app ? `${entry.app} · ` : '') + new Date(entry.time).toLocaleTimeString();
     meta.append(dims, time);
     item.append(meta);
 
@@ -83,9 +82,7 @@ async function refresh(): Promise<void> {
     });
     const del = button('删除', 'danger');
     del.addEventListener('click', () => {
-      void window.api.history
-        .action({ kind: 'delete', id: entry.id })
-        .then(refresh);
+      void window.api.history.action({ kind: 'delete', id: entry.id }).then(refresh);
     });
     ops.append(copy, pin, save, del);
     item.append(ops);

@@ -39,9 +39,7 @@ function normalizeGlassStrength(value: unknown): number {
 }
 
 function normalizeRetention(value: unknown): HistoryRetention {
-  return RETENTIONS.includes(value as HistoryRetention)
-    ? (value as HistoryRetention)
-    : DEFAULTS.historyRetention;
+  return RETENTIONS.includes(value as HistoryRetention) ? (value as HistoryRetention) : DEFAULTS.historyRetention;
 }
 
 let cached: AppSettings | null = null;

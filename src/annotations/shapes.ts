@@ -278,13 +278,7 @@ function pixelatedRegion(
  * `ctx.filter = blur()` 贴回。快照的源矩形与贴回的目标矩形都要按
  * 当前变换系数换算（同 pixelatedRegion 的坑）。
  */
-function blurRegion(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
+function blurRegion(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   const r = normRect(x, y, w, h);
   if (r.w < 2 || r.h < 2) return;
   const radius = Math.min(40, Math.max(8, Math.round(Math.min(r.w, r.h) / 8)));
@@ -295,10 +289,7 @@ function blurRegion(
   const sx = Math.max(0, Math.round((r.x - pad) * kx));
   const sy = Math.max(0, Math.round((r.y - pad) * ky));
   const sw = Math.min(ctx.canvas.width - sx, Math.round((r.w + pad * 2) * kx));
-  const sh = Math.min(
-    ctx.canvas.height - sy,
-    Math.round((r.h + pad * 2) * ky),
-  );
+  const sh = Math.min(ctx.canvas.height - sy, Math.round((r.h + pad * 2) * ky));
   if (sw < 1 || sh < 1) return;
 
   const snap = getScratch('blursnap', sw, sh);
@@ -476,12 +467,7 @@ export function shapeBBox(shape: Shape, ctx: CanvasRenderingContext2D): Rect {
 
 /** 只有这几种支持拖手柄改大小；画笔 / 文字 / 马赛克只能整体移动。 */
 export function canResize(shape: Shape): boolean {
-  return (
-    shape.type === 'rect' ||
-    shape.type === 'ellipse' ||
-    shape.type === 'arrow' ||
-    shape.type === 'line'
-  );
+  return shape.type === 'rect' || shape.type === 'ellipse' || shape.type === 'arrow' || shape.type === 'line';
 }
 
 export function shapeHandlePoints(

@@ -1,12 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  ClipboardItem,
-  dialog,
-  nativeImage,
-  screen,
-} from 'electron';
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage, screen } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { toBlob } from '../shared/bytes';
@@ -67,9 +59,7 @@ export function createPinWindow(bounds: Rect): BrowserWindow {
   win.setAlwaysOnTop(true, 'floating');
   forwardRendererLogs(win, 'pin');
   win.webContents.on('render-process-gone', (_e, details) => {
-    console.error(
-      `[pin-window] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`,
-    );
+    console.error(`[pin-window] 渲染进程退出 reason=${details.reason} exitCode=${details.exitCode}`);
   });
   win.on('unresponsive', () => console.warn('[pin-window] 窗口无响应'));
   win.on('closed', () => {
@@ -83,19 +73,13 @@ export function createPinWindow(bounds: Rect): BrowserWindow {
 /** 全部存活的贴图窗口 */
 const pins = new Set<BrowserWindow>();
 /** 历史图片 / 长图转贴图：等待 renderer pin:boot 来取的图片数据 */
-const pendingImages = new Map<
-  number,
-  { png: Buffer; width: number; height: number; editMode: boolean }
->();
+const pendingImages = new Map<number, { png: Buffer; width: number; height: number; editMode: boolean }>();
 
 /**
  * 用独立图片（历史记录 / 长图）创建贴图窗口。窗口尺寸 = 图片 DIP 尺寸
  * 适配工作区 70% 后居中；`editMode` 直接进入标注编辑（长图二次编辑）。
  */
-export async function createPinFromImage(
-  png: Uint8Array,
-  editMode: boolean,
-): Promise<void> {
+export async function createPinFromImage(png: Uint8Array, editMode: boolean): Promise<void> {
   const img = nativeImage.createFromBuffer(Buffer.from(png));
   if (img.isEmpty()) throw new Error('图片数据为空');
   const { width, height } = img.getSize();
@@ -120,9 +104,7 @@ export async function createPinFromImage(
 }
 
 /** pin:boot 的「历史图片」分支：取走挂在本窗口上的图片数据。 */
-export function takePendingImageBoot(
-  sender: WebContents,
-): PinImageInitPayload | null {
+export function takePendingImageBoot(sender: WebContents): PinImageInitPayload | null {
   const pending = pendingImages.get(sender.id);
   if (!pending) return null;
   pendingImages.delete(sender.id);
@@ -161,17 +143,13 @@ export async function loadPin(win: BrowserWindow): Promise<void> {
     // dev 的 URL 没有 path，`/` 会被 SPA 规则解析成 index.html，必须带文件名
     await win.loadURL(`${PIN_VITE_DEV_SERVER_URL}/pin.html`);
   } else {
-    await win.loadFile(
-      path.join(__dirname, `../renderer/${PIN_VITE_NAME}/pin.html`),
-    );
+    await win.loadFile(path.join(__dirname, `../renderer/${PIN_VITE_NAME}/pin.html`));
   }
 }
 
 export async function copyPng(png: Uint8Array, sourceApp?: string): Promise<void> {
   if (png.byteLength === 0) throw new Error('图片数据为空');
-  await clipboard.write([
-    new ClipboardItem({ 'image/png': toBlob(png, 'image/png') }),
-  ]);
+  await clipboard.write([new ClipboardItem({ 'image/png': toBlob(png, 'image/png') })]);
   const { pushHistory } = await import('./history');
   pushHistory(png, sourceApp);
 }
@@ -198,18 +176,13 @@ export async function savePng(
     const settings = await getSettings();
     const opts = {
       title: '保存截图',
-      defaultPath: path.join(
-        settings.saveDir || app.getPath('pictures'),
-        suggestedName,
-      ),
+      defaultPath: path.join(settings.saveDir || app.getPath('pictures'), suggestedName),
       filters: [
         { name: 'PNG 图片', extensions: ['png'] },
         { name: 'JPEG 图片', extensions: ['jpg', 'jpeg'] },
       ],
     };
-    const { canceled, filePath } = owner
-      ? await dialog.showSaveDialog(owner, opts)
-      : await dialog.showSaveDialog(opts);
+    const { canceled, filePath } = owner ? await dialog.showSaveDialog(owner, opts) : await dialog.showSaveDialog(opts);
     if (canceled || !filePath) return null;
     let data: Buffer = Buffer.from(png);
     let target = filePath;

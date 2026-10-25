@@ -1,8 +1,7 @@
 import { desktopCapturer, dialog, shell, systemPreferences } from 'electron';
 
 /** 「系统设置 → 隐私与安全性 → 屏幕录制」的直达链接，旧版系统也能落到对应面板。 */
-const SCREEN_CAPTURE_SETTINGS_URL =
-  'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
+const SCREEN_CAPTURE_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
 
 /** 引导弹窗一次只开一个：启动提示还没关、用户又按了快捷键时别叠两层。 */
 let prompting = false;

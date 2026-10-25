@@ -749,10 +749,7 @@ export class Editor {
    * 2. 同一时刻只允许一个输入框 —— 再次点击画布时先把上一个提交掉，
    *    否则会堆叠监听器、旧文本被 value='' 清掉。
    */
-  private openTextEditor(
-    event: MouseEvent,
-    existing?: Extract<Shape, { type: 'text' }>,
-  ): void {
+  private openTextEditor(event: MouseEvent, existing?: Extract<Shape, { type: 'text' }>): void {
     console.log(`[editor] 打开文字输入框 client=${Math.round(event.clientX)},${Math.round(event.clientY)}`);
     this.closeActiveText?.();
 
@@ -781,9 +778,7 @@ export class Editor {
     ta.style.minHeight = `${boxH}px`;
 
     // 锚点跟着夹紧后的位置走：看到哪，导出就在哪；二次编辑锚在原文字处
-    const origin = existing
-      ? { x: existing.x, y: existing.y }
-      : this.toImage({ clientX: left, clientY: top });
+    const origin = existing ? { x: existing.x, y: existing.y } : this.toImage({ clientX: left, clientY: top });
     let ended = false;
     let focused = false;
 

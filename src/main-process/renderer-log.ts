@@ -11,12 +11,7 @@ export function forwardRendererLogs(win: BrowserWindow, tag: string): void {
     if (level === 'debug') return;
     console.log(`[${tag}:${level}] ${message} (${sourceId}:${lineNumber})`);
   });
-  win.webContents.on(
-    'did-fail-load',
-    (_event, errorCode, errorDescription, validatedURL) => {
-      console.error(
-        `[${tag}] 页面加载失败 ${errorCode} ${errorDescription} ${validatedURL}`,
-      );
-    },
-  );
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[${tag}] 页面加载失败 ${errorCode} ${errorDescription} ${validatedURL}`);
+  });
 }

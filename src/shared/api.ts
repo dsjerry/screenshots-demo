@@ -51,17 +51,9 @@ export interface ScreenshotsApi {
     /** 写入剪贴板文本（放大镜的复制颜色值） */
     copyText(payload: { text: string }): Promise<PinActionResult>;
     /** 主进程推来合成数据（复制 / 保存），宿主遮罩就地拼图导出 */
-    compose(
-      cb: (payload: {
-        kind: 'copy' | 'save';
-        data: OverlayComposePayload;
-      }) => void,
-    ): () => void;
+    compose(cb: (payload: { kind: 'copy' | 'save'; data: OverlayComposePayload }) => void): () => void;
     /** 合成好的 PNG：交主进程进剪贴板 / 存盘，随后结束截图 */
-    export(payload: {
-      kind: 'copy' | 'save';
-      png: Uint8Array;
-    }): Promise<PinActionResult>;
+    export(payload: { kind: 'copy' | 'save'; png: Uint8Array }): Promise<PinActionResult>;
     /** OCR 识别结果（识别在主进程异步进行，完成后推回） */
     ocrResult(cb: (payload: OcrResultPayload) => void): () => void;
   };

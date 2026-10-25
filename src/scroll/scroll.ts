@@ -51,10 +51,7 @@ let desyncFrames = 0;
  */
 function probeStart(): number {
   if (!acc) return 0;
-  const margin = Math.min(
-    BOTTOM_MARGIN,
-    Math.max(0, Math.floor((acc.height - PROBE_ROWS) / 2)),
-  );
+  const margin = Math.min(BOTTOM_MARGIN, Math.max(0, Math.floor((acc.height - PROBE_ROWS) / 2)));
   return Math.max(0, acc.height - PROBE_ROWS - margin);
 }
 
@@ -97,9 +94,7 @@ function setMode(next: 'manual' | 'auto'): void {
   desyncFrames = 0;
   autoStoppedByBottom = false;
   hintEl.textContent = mode === 'auto' ? HINT_AUTO : HINT_DEFAULT;
-  void window.api.scroll
-    .action({ kind: mode })
-    .catch(() => {});
+  void window.api.scroll.action({ kind: mode }).catch(() => {});
 }
 
 modeManualBtn.addEventListener('click', () => setMode('manual'));
@@ -217,10 +212,7 @@ function appendStrip(strip: Uint8ClampedArray, srcRow: number, count: number): v
   if (!acc) return;
   while (acc.height + count > acc.cap) grow();
   const rowBytes = acc.width * 4;
-  acc.data.set(
-    strip.subarray(srcRow * rowBytes, (srcRow + count) * rowBytes),
-    acc.height * rowBytes,
-  );
+  acc.data.set(strip.subarray(srcRow * rowBytes, (srcRow + count) * rowBytes), acc.height * rowBytes);
   for (let r = 0; r < count; r++) {
     acc.sigs.push(rowSig(strip, srcRow + r, acc.width));
   }
@@ -375,9 +367,7 @@ async function finish(kind: 'copy' | 'save' | 'edit'): Promise<void> {
   if (!ctx) return;
   const bytes = acc.data.slice(0, acc.width * acc.height * 4);
   ctx.putImageData(new ImageData(bytes, acc.width, acc.height), 0, 0);
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, 'image/png'),
-  );
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) return;
   const png = new Uint8Array(await blob.arrayBuffer());
   try {
