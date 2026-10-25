@@ -38,6 +38,7 @@ import type { PinPadding } from '../shared/pin-layout';
 import {
   clampRect,
   hitHandle,
+  hitBorder,
   moveRect,
   pointInRect,
   resizeRect,
@@ -740,7 +741,9 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
       // 已有选区时先判断这一下是调手柄、整体移动，还是重新框选
       const prev = s.selection;
       if (s.phase === 'adjusting' && prev && hasRealSelection(prev)) {
-        const handle = hitHandle(prev, p);
+        // 手柄（12 DIP 8 点）优先，边框中段（6 DIP 带）兜底 —— 与遮罩
+        // 渲染端 hitResizeZone 同一组合，光标说能调按下去就得能调
+        const handle = hitHandle(prev, p) ?? hitBorder(prev, p);
         if (handle) {
           s.mode = { kind: 'resize', origin: { ...prev }, handle, start: p };
           startPoll(s);
