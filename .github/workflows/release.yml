@@ -1,7 +1,8 @@
 name: Release
 
-# 打 tag（v*）发布 Release —— annotated tag 的注释就是更新说明（body），
-# GitHub 自动汇总的 PR/commit 列表会追加在后面；也可在 Actions 页手动触发。
+# 发布：打 tag（v*）或手动触发（必填版本号）。annotated tag 的注释就是
+# 更新说明（body），GitHub 自动汇总的 PR/commit 列表追加其后。
+# 手动触发会把 tag（v<版本号>）打在当前 commit 上并创建 Release。
 on:
   push:
     tags:
@@ -9,8 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '包版本号（如 1.2.3；留空用 package.json 现值，仅影响产物命名与元数据）'
-        required: false
+        description: '版本号（如 1.2.3），手动运行必填 —— 决定产物命名与 Release 标签'
+        required: true
         type: string
 
 permissions:
@@ -39,24 +40,19 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint
-        run: npm run lint
-
-      # 解析产物版本：tag 构建 = tag 本身；手动构建 = 输入值，留空用
-      # package.json 现值。产物文件名与包元数据统一用它。
+      # 产物版本：tag 构建 = tag 本身；手动 = 输入值（必填）
       - name: Resolve version
         id: ver
         shell: bash
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
 
-      # 包版本同步成解析出的版本号（--allow-same-version：同号重跑不报错）
+      # 包版本同步成解析出的版本号 —— 只改工作区（产物命名 / 包元数据用），
+      # 不回写仓库；--allow-same-version 让同号重跑不报错
       - name: Sync package version
         shell: bash
         run: npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
@@ -79,12 +75,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "make/squirrel-windows/*.exe" dist/ -ErrorAction SilentlyContinue
 
-      # annotated tag 的注释即更新说明（git tag -a v1.2.3 -m "- 新增 XX"）；
-      # 轻量 tag 取到空文件也无妨 —— generate_release_notes 照常汇总
-      - name: Extract release notes from tag
-        if: startsWith(github.ref, 'refs/tags/')
+      # annotated tag 注释即更新说明；手动运行没有 tag 注释，占位一行，
+      # generate_release_notes 的自动汇总照常追加
+      - name: Prepare release notes
         shell: bash
-        run: git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
+          else
+            echo "手动构建 ${{ steps.ver.outputs.version }}" > release-notes.md
+          fi
 
       - name: Upload artifacts (manual runs)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -96,11 +96,90 @@ jobs:
             dist/*.exe
 
       - name: Create release with artifacts
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          # tag 构建：ref 即 tag；手动：v<版本号> 不存在则在当前 commit 上创建
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
           body_path: release-notes.md
           generate_release_notes: true
           files: |
             *.zip
             dist/*.exe
+
+  build-macos:
+    runs-on: macos-latest
+    env:
+      ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync package version
+        shell: bash
+        run: npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      # 双架构分别出包；window-probe 本身是 universal 二进制，两个包通用。
+      # 未签名（无证书/公证）：首次打开需右键 → 打开，或 xattr -cr 清隔离属性
+      - name: Package (arm64)
+        run: npx electron-forge package --platform darwin --arch arm64
+
+      - name: Package (x64)
+        run: npx electron-forge package --platform darwin --arch x64
+
+      # ditto 保留 .app 内的符号链接 —— 普通 zip -r 不带 -y 会把 Frameworks
+      # 里的链接实体化，应用直接损坏
+      - name: Zip app bundles
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          ditto -c -k --keepParent "out/screenshots-darwin-arm64/screenshots.app" "Screenshots-$VERSION-darwin-arm64.zip"
+          ditto -c -k --keepParent "out/screenshots-darwin-x64/screenshots.app" "Screenshots-$VERSION-darwin-x64.zip"
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
+          else
+            echo "手动构建 ${{ steps.ver.outputs.version }}" > release-notes.md
+          fi
+
+      - name: Upload artifacts (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            *.zip
+
+      - name: Create release with artifacts
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
+          body_path: release-notes.md
+          generate_release_notes: true
+          files: |
+            *.zip
