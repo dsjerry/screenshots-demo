@@ -1,4 +1,5 @@
 import './index.css';
+import type { HistoryRetention } from './shared/types';
 
 const startBtn = document.getElementById('start') as HTMLButtonElement;
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
@@ -7,6 +8,7 @@ const hotkeyBtn = document.getElementById('hotkey') as HTMLButtonElement;
 const autostartInput = document.getElementById('autostart') as HTMLInputElement;
 const savedirBtn = document.getElementById('savedir') as HTMLButtonElement;
 const formatSelect = document.getElementById('format') as HTMLSelectElement;
+const historyRetentionSelect = document.getElementById('history-retention') as HTMLSelectElement;
 const glassStrengthRow = document.getElementById('glass-strength-row') as HTMLDivElement;
 const glassStrengthInput = document.getElementById('glass-strength') as HTMLInputElement;
 const glassStrengthValue = document.getElementById('glass-strength-value') as HTMLOutputElement;
@@ -86,6 +88,7 @@ async function loadSettings(): Promise<void> {
   savedirBtn.textContent = s.saveDir;
   savedirBtn.title = s.saveDir;
   formatSelect.value = s.saveFormat;
+  historyRetentionSelect.value = s.historyRetention;
   glassStrengthInput.value = String(s.glassStrength);
   updateGlassStrengthPreview(s.glassStrength);
 }
@@ -98,6 +101,15 @@ formatSelect.addEventListener('change', () => {
   void window.api.settings.set({
     saveFormat: formatSelect.value as 'png' | 'jpg',
   });
+});
+
+historyRetentionSelect.addEventListener('change', () => {
+  void window.api.settings
+    .set({ historyRetention: historyRetentionSelect.value as HistoryRetention })
+    .catch((err: unknown) => {
+      status(err instanceof Error ? err.message : String(err));
+      void loadSettings();
+    });
 });
 
 glassStrengthInput.addEventListener('input', () => {

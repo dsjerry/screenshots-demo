@@ -5,6 +5,13 @@
   padding: 14px;
 }
 
+.day-header {
+  padding: 4px 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(215, 218, 222, 0.55);
+}
+
 .item {
   display: flex;
   gap: 14px;

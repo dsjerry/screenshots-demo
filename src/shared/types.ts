@@ -207,6 +207,8 @@ export interface HistoryEntryInfo {
   width: number;
   height: number;
   time: number;
+  /** 采录时的前台应用（会话开始时探得，拿不到就缺省） */
+  app?: string;
 }
 
 export type HistoryActionKind = 'copy' | 'pin' | 'save' | 'delete';
@@ -221,6 +223,9 @@ export interface OcrResultPayload {
 /** 应用设置（主窗口设置页读写，settings.json 持久化） */
 export type SaveFormat = 'png' | 'jpg';
 
+/** 截图历史的保留策略：不记录 / 仅本次运行（内存，默认）/ 落盘持久化 */
+export type HistoryRetention = 'off' | 'session' | 'persistent';
+
 export interface AppSettings {
   /** 全局截图快捷键（Electron accelerator 字符串） */
   hotkey: string;
@@ -232,6 +237,8 @@ export interface AppSettings {
   saveFormat: SaveFormat;
   /** macOS Liquid Glass 染色强度（0-100；越高越不透明） */
   glassStrength: number;
+  /** 截图历史保留策略（默认仅会话内 —— 隐私上保守，落盘要用户明说） */
+  historyRetention: HistoryRetention;
 }
 
 export type SettingsPatch = Partial<AppSettings>;

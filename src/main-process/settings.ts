@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { HistoryRetention } from '../shared/types';
 
 /**
  * 应用设置（settings.json 存在 userData 下）。
@@ -17,6 +18,8 @@ export interface AppSettings {
   saveFormat: 'png' | 'jpg';
   /** macOS Liquid Glass 染色强度（0-100；越高越不透明） */
   glassStrength: number;
+  /** 截图历史保留策略（默认仅会话内） */
+  historyRetention: HistoryRetention;
 }
 
 const DEFAULTS: AppSettings = {
@@ -25,14 +28,23 @@ const DEFAULTS: AppSettings = {
   saveDir: app.getPath('pictures'),
   saveFormat: 'png',
   glassStrength: 35,
+  historyRetention: 'session',
 };
 
-let cached: AppSettings | null = null;
+const RETENTIONS: readonly HistoryRetention[] = ['off', 'session', 'persistent'];
 
 function normalizeGlassStrength(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULTS.glassStrength;
   return Math.round(Math.max(0, Math.min(100, value)));
 }
+
+function normalizeRetention(value: unknown): HistoryRetention {
+  return RETENTIONS.includes(value as HistoryRetention)
+    ? (value as HistoryRetention)
+    : DEFAULTS.historyRetention;
+}
+
+let cached: AppSettings | null = null;
 
 function settingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -50,6 +62,7 @@ export async function getSettings(): Promise<AppSettings> {
     ...DEFAULTS,
     ...loaded,
     glassStrength: normalizeGlassStrength(loaded.glassStrength),
+    historyRetention: normalizeRetention(loaded.historyRetention),
   };
   return cached;
 }
@@ -57,6 +70,7 @@ export async function getSettings(): Promise<AppSettings> {
 export async function setSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   const next = { ...(await getSettings()), ...patch };
   next.glassStrength = normalizeGlassStrength(next.glassStrength);
+  next.historyRetention = normalizeRetention(next.historyRetention);
   cached = next;
   await fs.mkdir(app.getPath('userData'), { recursive: true });
   await fs.writeFile(settingsPath(), JSON.stringify(next, null, 2), 'utf8');

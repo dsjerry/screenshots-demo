@@ -67,6 +67,10 @@ export function registerIpc(ctx: AppContext): void {
     if (patch.glassStrength !== undefined && patch.glassStrength !== prev.glassStrength) {
       ctx.applyGlassStrength(next.glassStrength);
     }
+    if (patch.historyRetention !== undefined && patch.historyRetention !== prev.historyRetention) {
+      // 切换保留策略：off/session 清盘、persistent 迁移内存条目（隐私原则见 history.ts）
+      await history.applyHistoryRetention();
+    }
     return next;
   });
 

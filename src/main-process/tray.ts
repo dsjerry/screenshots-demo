@@ -57,6 +57,8 @@ export interface TrayCallbacks {
   onHistory(): void;
   /** 全部贴图恢复鼠标（解除点击穿透） */
   onRestorePins(): void;
+  /** 收起（关闭）全部贴图 */
+  onCloseAllPins(): void;
   getMainWindow(): BrowserWindow | null;
 }
 
@@ -72,6 +74,7 @@ export function createTray(cb: TrayCallbacks): Tray {
     { label: '5 秒后截图', click: () => cb.onSnipDelay(5000) },
     { type: 'separator' },
     { label: '截图历史', click: () => cb.onHistory() },
+    { label: '收起全部贴图', click: () => cb.onCloseAllPins() },
     { label: '恢复贴图鼠标', click: () => cb.onRestorePins() },
     { type: 'separator' },
     { label: '显示主窗口', click: () => cb.onShowMain() },

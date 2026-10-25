@@ -53,6 +53,14 @@
               <option value="jpg">JPG</option>
             </select>
           </div>
+          <div class="row">
+            <span class="label">截图历史</span>
+            <select id="history-retention" title="历史保留到哪一级；不保留/仅本次运行不会在磁盘留下任何截图">
+              <option value="off">不保留</option>
+              <option value="session">仅本次运行</option>
+              <option value="persistent">持久化到本地</option>
+            </select>
+          </div>
           <div class="row glass-row" id="glass-strength-row" hidden>
             <label class="label" for="glass-strength">液体玻璃强度</label>
             <div class="glass-control">

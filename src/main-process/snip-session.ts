@@ -1,6 +1,4 @@
-import { spawn } from 'node:child_process';
-import path from 'node:path';
-import { app, BrowserWindow, nativeImage, screen } from 'electron';
+import { BrowserWindow, nativeImage, screen } from 'electron';
 import type { Rectangle, WebContents } from 'electron';
 import { captureDisplays, resolveOutScale, unionBounds } from './capture';
 import {
@@ -28,6 +26,7 @@ import {
 } from './pin-window';
 import { getSettings } from './settings';
 import { ensureScreenCaptureAccess } from './screen-permission';
+import { frontAppName, probeWindows } from './window-probe';
 import { CH } from '../shared/channels';
 import {
   PIN_MIN_HEIGHT,
@@ -119,6 +118,8 @@ interface Session {
   hoverIndex: number;
   /** 会话创建时刻，用于「触发 → 首窗 ready」的总耗时打点 */
   startedAt: number;
+  /** 来源应用：会话开始时的前台窗口 owner 名（导出入历史时带上） */
+  sourceApp?: string;
 }
 
 export interface SnipHooks {
@@ -271,43 +272,9 @@ function rectFrom(a: Point, b: Point): Rect {
  */
 let getWindowsModule: typeof import('get-windows') | null = null;
 
-function windowProbePath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'window-probe')
-    : path.join(app.getAppPath(), 'resources', 'window-probe');
-}
-
-/** 探针输出 [{pid,x,y,w,h}]；坐标是全局「点」＝ mac 的 DIP，直接当 DIP 用 */
+/** mac：探针窗口列表 → DIP rect 列表（坐标是全局「点」，直接当 DIP 用） */
 function listHoverWindowsMac(): Promise<Rect[]> {
-  return new Promise((resolve, reject) => {
-    const p = spawn(windowProbePath(), ['--exclude-pid', String(process.pid)]);
-    let out = '';
-    let err = '';
-    const timer = setTimeout(() => {
-      p.kill();
-      reject(new Error('窗口探针超时'));
-    }, 2000);
-    p.stdout.on('data', (d: Buffer) => {
-      out += String(d);
-    });
-    p.stderr.on('data', (d: Buffer) => {
-      err += String(d);
-    });
-    p.on('error', reject);
-    p.on('exit', (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        reject(new Error(err.trim() || `窗口探针退出码 ${code}`));
-        return;
-      }
-      try {
-        const list = JSON.parse(out) as { x: number; y: number; w: number; h: number }[];
-        resolve(list.map((w) => ({ x: w.x, y: w.y, width: w.w, height: w.h })));
-      } catch (e) {
-        reject(e instanceof Error ? e : new Error(String(e)));
-      }
-    });
-  });
+  return probeWindows(process.pid).then((wins) => wins.map((w) => w.rect));
 }
 
 /** win 的 get-windows 返回物理像素，换算成 DIP；并显式排除自家窗口 */
@@ -630,6 +597,10 @@ export async function beginSnip(): Promise<void> {
   }, READY_TIMEOUT_MS);
 
   const own = session;
+  // 来源应用：此刻 z 序最前的非自家窗口（探针已排除自家 PID）；异步采录
+  void frontAppName().then((name) => {
+    if (session === own) own.sourceApp = name;
+  });
   pendingRest = restPromise
     .then((list) => {
       // 会话可能已经取消 / 重启，别把旧抓屏结果塞进新会话
@@ -1010,14 +981,16 @@ export async function onScrollAction(
     cancelSnip('scroll-empty');
     return;
   }
-  // 先收场（滚动窗口销毁、此前隐藏的窗口恢复），再进剪贴板 / 存盘对话框
+  // 先收场（滚动窗口销毁、此前隐藏的窗口恢复），再进剪贴板 / 存盘对话框；
+  // 来源应用要赶在收场前取 —— cancelSnip 之后会话就没了
+  const sourceApp = session?.sourceApp;
   cancelSnip(payload.kind === 'copy' ? 'scroll-copy' : 'scroll-save');
   try {
     if (payload.kind === 'copy') {
-      await copyPng(png);
+      await copyPng(png, sourceApp);
       console.log(`[scroll] 长图已复制 ${png.byteLength} 字节`);
     } else {
-      await savePng(null, png, defaultSnipName((await getSettings()).saveFormat));
+      await savePng(null, png, defaultSnipName((await getSettings()).saveFormat), sourceApp);
     }
   } catch (err) {
     console.error('[scroll] 导出失败', err);
@@ -1085,11 +1058,13 @@ export async function onOverlayExport(
 ): Promise<PinActionResult> {
   if (!session) return { ok: false, error: '截图会话已结束' };
   if (png.byteLength === 0) return { ok: false, error: '图片数据为空' };
+  // 来源应用要赶在 cancelSnip 前取（收场之后会话就没了）
+  const sourceApp = session.sourceApp;
   const win = BrowserWindow.fromWebContents(sender);
   cancelSnip(kind === 'copy' ? 'copy' : 'save');
   try {
     if (kind === 'copy') {
-      await copyPng(png);
+      await copyPng(png, sourceApp);
       console.log(`[snip] 已复制 ${png.byteLength} 字节`);
       return { ok: true };
     }
@@ -1097,6 +1072,7 @@ export async function onOverlayExport(
       win,
       png,
       defaultSnipName((await getSettings()).saveFormat),
+      sourceApp,
     );
     return saved
       ? { ok: true }

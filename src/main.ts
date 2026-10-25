@@ -8,8 +8,8 @@ import { beginSnip, cancelSnip } from './main-process/snip-session';
 import { createTray, destroyTray, getTrayBounds } from './main-process/tray';
 import { hideHudCatchers, setHudDismissCallback, showHudCatchers } from './main-process/hud-catcher';
 import { getSettings } from './main-process/settings';
-import { openHistoryWindow } from './main-process/history';
-import { setPinsMouseIgnore } from './main-process/pin-window';
+import { applyHistoryRetention, openHistoryWindow } from './main-process/history';
+import { closeAllPins, setPinsMouseIgnore } from './main-process/pin-window';
 import { ensureScreenCaptureAccess } from './main-process/screen-permission';
 
 // macOS：纯菜单栏应用（Shottr 形态）—— 无 Dock 图标、不占 Cmd+Tab。
@@ -295,6 +295,7 @@ app.whenReady().then(async () => {
     onShowMain: () => showMainWindow(),
     onToggleMain: () => toggleMainWindow(),
     onHistory: () => openHistoryWindow(),
+    onCloseAllPins: () => closeAllPins(),
     onRestorePins: () => setPinsMouseIgnore(false),
     getMainWindow: () => mainWindow,
   });
@@ -302,6 +303,11 @@ app.whenReady().then(async () => {
   // 设置里的全局快捷键（注册失败时 applyHotkey 内部回退旧键并告警）
   const settings = await getSettings();
   applyHotkey(settings.hotkey);
+  // 历史保留策略与磁盘对齐：上次以持久化退出、现在是非持久化的话，
+  // 启动即清盘（隐私原则：非持久化策略下不留任何盘上痕迹）
+  if (settings.historyRetention !== 'persistent') {
+    await applyHistoryRetention();
+  }
 
   // macOS 没有「屏幕录制」权限时启动即引导授权，别等第一次截图截出壁纸才失败
   void ensureScreenCaptureAccess();

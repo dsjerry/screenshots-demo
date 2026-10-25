@@ -48,7 +48,12 @@ int main(int argc, const char *argv[]) {
         continue;
       }
       if (rect.size.width <= 0 || rect.size.height <= 0) continue;
+      // owner 名（截图历史的「来源应用」用）：NSRunningApplication 的
+      // localizedName 优先，缺了退回 CGWindowList 自带的 owner name
+      NSString *name = app.localizedName;
+      if (!name) name = info[(__bridge NSString *)kCGWindowOwnerName];
       [windows addObject:@{@"pid" : @(pid),
+                           @"app" : name ?: @"",
                            @"x" : @(rect.origin.x),
                            @"y" : @(rect.origin.y),
                            @"w" : @(rect.size.width),

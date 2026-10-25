@@ -144,6 +144,18 @@ export function setPinsMouseIgnore(ignore: boolean): void {
   console.log(`[pin-window] 贴图穿透 ${ignore ? '开启' : '关闭'} × ${pins.size}`);
 }
 
+/** 收起（关闭）全部贴图窗口，返回关闭数量。 */
+export function closeAllPins(): number {
+  let n = 0;
+  for (const win of pins) {
+    if (win.isDestroyed()) continue;
+    win.close();
+    n++;
+  }
+  console.log(`[pin-window] 收起全部贴图 × ${n}`);
+  return n;
+}
+
 export async function loadPin(win: BrowserWindow): Promise<void> {
   if (PIN_VITE_DEV_SERVER_URL) {
     // dev 的 URL 没有 path，`/` 会被 SPA 规则解析成 index.html，必须带文件名
@@ -155,13 +167,13 @@ export async function loadPin(win: BrowserWindow): Promise<void> {
   }
 }
 
-export async function copyPng(png: Uint8Array): Promise<void> {
+export async function copyPng(png: Uint8Array, sourceApp?: string): Promise<void> {
   if (png.byteLength === 0) throw new Error('图片数据为空');
   await clipboard.write([
     new ClipboardItem({ 'image/png': toBlob(png, 'image/png') }),
   ]);
   const { pushHistory } = await import('./history');
-  pushHistory(png);
+  pushHistory(png, sourceApp);
 }
 
 /** 写入剪贴板文本（放大镜的复制颜色值）。 */
@@ -174,6 +186,7 @@ export async function savePng(
   win: BrowserWindow | null,
   png: Uint8Array,
   suggestedName: string,
+  sourceApp?: string,
 ): Promise<string | null> {
   // 只有**可见**的置顶窗口才需要先降级（否则对话框被它盖住）；
   // 顺带也别动隐藏窗口的层级 —— 遮罩是 screen-saver，降完再恢复成
@@ -210,7 +223,7 @@ export async function savePng(
     // 保存成功后把文件路径放进剪贴板，方便直接粘贴分享
     clipboard.writeText(target);
     const { pushHistory } = await import('./history');
-    pushHistory(png);
+    pushHistory(png, sourceApp);
     return target;
   } finally {
     if (owner && wasOnTop) owner.setAlwaysOnTop(true, 'floating');
