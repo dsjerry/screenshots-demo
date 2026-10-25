@@ -79,13 +79,7 @@ export interface OverlaySelectionPayload {
  * - `scroll` 进入滚动截长图（遮罩收起，由专用窗口接管）
  * - `cancel` 取消
  */
-export type OverlayActionKind =
-  | 'pin'
-  | 'cancel'
-  | 'copy'
-  | 'save'
-  | 'scroll'
-  | 'ocr';
+export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'scroll' | 'ocr';
 
 /** 遮罩就地合成导出所需的数据（主进程推给宿主遮罩）。 */
 export interface OverlayComposePayload {
@@ -236,21 +230,13 @@ export interface AppSettings {
   saveDir: string;
   /** 默认保存格式 */
   saveFormat: SaveFormat;
+  /** macOS Liquid Glass 染色强度（0-100；越高越不透明） */
+  glassStrength: number;
 }
 
 export type SettingsPatch = Partial<AppSettings>;
 
-export type ToolId =
-  | 'hand'
-  | 'arrow'
-  | 'line'
-  | 'rect'
-  | 'ellipse'
-  | 'pen'
-  | 'marker'
-  | 'mosaic'
-  | 'counter'
-  | 'text';
+export type ToolId = 'hand' | 'arrow' | 'line' | 'rect' | 'ellipse' | 'pen' | 'marker' | 'mosaic' | 'counter' | 'text';
 
 export interface StrokeBase {
   color: string;

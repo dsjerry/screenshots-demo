@@ -1,6 +1,12 @@
 import { intersect, renderOverlay } from './draw';
 import { stitch } from '../shared/stitch';
-import { HANDLE_CURSOR, hitHandleIn, pointInRect } from '../shared/selection';
+import {
+  HANDLE_CURSOR,
+  hitBorder,
+  hitHandleIn,
+  pointInRect,
+} from '../shared/selection';
+import type { HandleId } from '../shared/selection';
 import { Editor } from '../annotations/editor';
 import { drawDraftPath, drawDraftRect, drawShape } from '../annotations/shapes';
 import { createToolbar } from '../annotations/toolbar';
@@ -138,14 +144,20 @@ function selectionLocal(): Rect | null {
  * 返回 true = 主进程接管（本监听器负责 stopImmediatePropagation，
  * 编辑器的 pointerdown 就不会跑了）；返回 false = 放行给编辑器画。
  *
- * 规则：手型工具、或按下点不在选区内 → 调整选区（框外按下 = 重新框选）；
- * 绘图工具且在选区内 → 画标注。工具条本身在另一个元素上，点它不会进来。
+ * 规则：**边框/手柄优先于任何工具** —— 压上手柄或边框就是调整大小
+ * （与 updateCursor 的光标一致：光标说能调，按下去就得能调）；其次
+ * 绘图工具且在选区内 → 画标注；其余（手型在选区内 / 任何工具在选区外）
+ * → 主进程接管（整体移动或重新框选）。工具条本身在另一个元素上，点它不会进来。
  */
 function routeToSelection(event: PointerEvent): boolean {
   const tool = editor?.currentTool ?? 'hand';
   const local = selectionLocal();
-  const inside =
-    !!local && pointInRect(local, { x: event.clientX, y: event.clientY });
+  const p = { x: event.clientX, y: event.clientY };
+  const inside = !!local && pointInRect(local, p);
+  if (inside && hitResizeZone(p)) {
+    void window.api.overlay.input({ kind: 'down' });
+    return true;
+  }
   if (tool !== 'hand' && inside) return false;
   void window.api.overlay.input({ kind: 'down' });
   return true;
@@ -302,6 +314,32 @@ window.addEventListener('pointerout', (event) => {
   if (!event.relatedTarget) magEl.hidden = true;
 });
 
+/**
+ * 选区整体平移到本窗口坐标，**不裁剪** —— 边框命中要按真实边算
+ * （selectionLocal 裁出来的边是画的假象，压上去不对应任何真实手柄/边）。
+ */
+function fullLocalRect(): Rect | null {
+  if (!shot || !payload?.selection) return null;
+  return {
+    x: payload.selection.x - shot.bounds.x,
+    y: payload.selection.y - shot.bounds.y,
+    width: payload.selection.width,
+    height: payload.selection.height,
+  };
+}
+
+/** 手柄（12 DIP，8 点）优先，边框中段（6 DIP 带）兜底 —— 光标与按下路由共用 */
+function hitResizeZone(p: Point): HandleId | null {
+  if (!shot || !payload?.selection) return null;
+  const handle = hitHandleIn(payload.selection, shot.bounds, p, {
+    width: cssWidth,
+    height: cssHeight,
+  });
+  if (handle) return handle;
+  const full = fullLocalRect();
+  return full ? hitBorder(full, p) : null;
+}
+
 function updateCursor(p: Point): void {
   const adjusting =
     shot && payload && payload.phase === 'adjusting' && payload.selection;
@@ -309,18 +347,16 @@ function updateCursor(p: Point): void {
     canvas.style.cursor = '';
     return;
   }
-  // 绘图工具下没有「调选区」的视觉暗示 —— 手柄光标只会误导
-  if (payload.activeTool !== 'hand') {
-    canvas.style.cursor = 'crosshair';
-    return;
-  }
-  const origin = shot.bounds;
-  const handle = hitHandleIn(payload.selection, origin, p, {
-    width: cssWidth,
-    height: cssHeight,
-  });
+  // 边框/手柄光标对任何工具都生效 —— 那一圈永远可抓（routeToSelection
+  // 同规则），光标不变就没人知道能调
+  const handle = hitResizeZone(p);
   if (handle) {
     canvas.style.cursor = HANDLE_CURSOR[handle];
+    return;
+  }
+  // 手型在选区内是「可整体移动」；绘图工具在选区内要画标注，保持十字
+  if (payload.activeTool !== 'hand') {
+    canvas.style.cursor = 'crosshair';
     return;
   }
   const local = selectionLocal();
@@ -387,8 +423,9 @@ function syncShortcutPanel(): void {
 
 function setupAnnotation(): void {
   // 两行式工具条（结构见 annotations/toolbar.ts），这里只注入动作组。
-  // 没有「确定」步骤：复制 / 保存就地合成即结束，钉住才是主操作；
-  // 动作顺序与业界一致 —— 保存类在前，取消（红）与确定（绿）收尾。
+  // ✓ 确认 = 复制到剪贴板并结束（微信 / QQ 截图「完成」的通行语义），是
+  // 本会话的「确定」；钉图降为普通动作与导出类并列。
+  // 收尾顺序按 macOS 对话框惯例：取消（红 ✕）在前、主操作（绿 ✓）居最右。
   const actions: ToolbarAction[] = [
     {
       id: 'copy',
@@ -396,6 +433,13 @@ function setupAnnotation(): void {
       run: () => {
         // 主进程推合成数据回来，本窗口就地拼图 → 回传 PNG → 剪贴板
         void window.api.overlay.action({ kind: 'copy' });
+      },
+    },
+    {
+      id: 'pin',
+      label: '钉住',
+      run: () => {
+        void window.api.overlay.action({ kind: 'pin' });
       },
     },
     {
@@ -431,11 +475,12 @@ function setupAnnotation(): void {
       },
     },
     {
-      id: 'pin',
-      label: '钉住',
+      id: 'confirm',
+      label: '确认',
       primary: true,
       run: () => {
-        void window.api.overlay.action({ kind: 'pin' });
+        // 与「复制」同一终点：合成 → 剪贴板 → 会话结束
+        void window.api.overlay.action({ kind: 'copy' });
       },
     },
   ];

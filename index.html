@@ -11,36 +11,71 @@
   </head>
   <body>
     <main class="shell">
-      <h1>截图工具</h1>
-      <p class="hint">
-        快捷键 <kbd id="hotkey-kbd">Ctrl+Shift+A</kbd>，
-        托盘左键亦可触发。选区可跨屏拖动。
-      </p>
+      <header class="head">
+        <span class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 16 16">
+            <rect width="16" height="16" rx="4" fill="#2f6fed" />
+            <path
+              d="M3 5.5V3h2.5 M10.5 3H13v2.5 M13 10.5V13h-2.5 M5.5 13H3v-2.5"
+              stroke="#fff"
+              stroke-width="1.6"
+              fill="none"
+              stroke-linecap="round"
+            />
+            <circle cx="8" cy="8" r="1.4" fill="#fff" />
+          </svg>
+        </span>
+        <h1>截图工具</h1>
+      </header>
+
       <button id="start" type="button">开始截图</button>
       <p id="status" class="status" role="status"></p>
 
       <section class="settings">
         <h2>设置</h2>
-        <div class="row">
-          <span class="label">全局快捷键</span>
-          <button id="hotkey" type="button" class="value">Ctrl+Shift+A</button>
-        </div>
-        <div class="row">
-          <span class="label">开机自启</span>
-          <input id="autostart" type="checkbox" />
-        </div>
-        <div class="row">
-          <span class="label">保存目录</span>
-          <button id="savedir" type="button" class="value dir">…</button>
-        </div>
-        <div class="row">
-          <span class="label">默认格式</span>
-          <select id="format">
-            <option value="png">PNG</option>
-            <option value="jpg">JPG</option>
-          </select>
+        <div class="card">
+          <div class="row">
+            <span class="label">全局快捷键</span>
+            <button id="hotkey" type="button" class="value">Ctrl+Shift+A</button>
+          </div>
+          <div class="row">
+            <span class="label">开机自启</span>
+            <input id="autostart" type="checkbox" class="switch" />
+          </div>
+          <div class="row">
+            <span class="label">保存目录</span>
+            <button id="savedir" type="button" class="value dir">…</button>
+          </div>
+          <div class="row">
+            <span class="label">默认格式</span>
+            <select id="format">
+              <option value="png">PNG</option>
+              <option value="jpg">JPG</option>
+            </select>
+          </div>
+          <div class="row glass-row" id="glass-strength-row" hidden>
+            <label class="label" for="glass-strength">液体玻璃强度</label>
+            <div class="glass-control">
+              <input
+                id="glass-strength"
+                class="glass-range"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="35"
+                title="强度越高，染色越明显，背景透出越少"
+              />
+              <output id="glass-strength-value" for="glass-strength">35%</output>
+            </div>
+          </div>
         </div>
       </section>
+
+      <p class="hint">
+        快捷键 <kbd id="hotkey-kbd">Ctrl+Shift+A</kbd> 呼出截图，
+        <span id="tray-hint">托盘左键</span>开关本面板。选区可跨屏拖动。
+      </p>
     </main>
     <script type="module" src="/src/renderer.ts"></script>
   </body>

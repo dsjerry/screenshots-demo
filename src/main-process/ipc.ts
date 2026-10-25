@@ -41,6 +41,8 @@ export interface AppContext {
   focusMainWindow(): void;
   /** 应用新的全局快捷键；失败（被占用等）返回 false */
   applyHotkey(acc: string): boolean;
+  /** 应用 Liquid Glass 染色强度 */
+  applyGlassStrength(strength: number): void;
 }
 
 export function registerIpc(ctx: AppContext): void {
@@ -53,32 +55,26 @@ export function registerIpc(ctx: AppContext): void {
 
   // ---------------------------------------------------------- 应用设置
   ipcMain.handle(CH.settingsGet, () => getSettings());
-  ipcMain.handle(
-    CH.settingsSet,
-    async (_event, patch: SettingsPatch): Promise<AppSettings> => {
-      const prev = await getSettings();
-      const next = await setSettings(patch);
-      if (
-        patch.hotkey !== undefined &&
-        patch.hotkey !== prev.hotkey &&
-        !ctx.applyHotkey(next.hotkey)
-      ) {
-        // 新快捷键注册失败：回滚设置并恢复旧键，渲染进程据此提示
-        await setSettings({ hotkey: prev.hotkey });
-        ctx.applyHotkey(prev.hotkey);
-        throw new Error(`快捷键 ${patch.hotkey} 注册失败，可能已被其他程序占用`);
-      }
-      return next;
-    },
-  );
+  ipcMain.handle(CH.settingsSet, async (_event, patch: SettingsPatch): Promise<AppSettings> => {
+    const prev = await getSettings();
+    const next = await setSettings(patch);
+    if (patch.hotkey !== undefined && patch.hotkey !== prev.hotkey && !ctx.applyHotkey(next.hotkey)) {
+      // 新快捷键注册失败：回滚设置并恢复旧键，渲染进程据此提示
+      await setSettings({ hotkey: prev.hotkey });
+      ctx.applyHotkey(prev.hotkey);
+      throw new Error(`快捷键 ${patch.hotkey} 注册失败，可能已被其他程序占用`);
+    }
+    if (patch.glassStrength !== undefined && patch.glassStrength !== prev.glassStrength) {
+      ctx.applyGlassStrength(next.glassStrength);
+    }
+    return next;
+  });
 
   // -------------------------------------------------------- 截图历史
   ipcMain.handle(CH.historyBoot, () => history.listEntries());
   ipcMain.handle(CH.historyThumb, (_event, id: number) => history.thumb(id));
-  ipcMain.handle(
-    CH.historyAction,
-    (_event, payload: { kind: HistoryActionKind; id: number }) =>
-      history.runAction(payload),
+  ipcMain.handle(CH.historyAction, (_event, payload: { kind: HistoryActionKind; id: number }) =>
+    history.runAction(payload),
   );
 
   // -------------------------------------------------------- 保存目录
@@ -88,9 +84,7 @@ export function registerIpc(ctx: AppContext): void {
       properties: ['openDirectory', 'createDirectory'],
     };
     const { canceled, filePaths } =
-      win && !win.isDestroyed()
-        ? await dialog.showOpenDialog(win, opts)
-        : await dialog.showOpenDialog(opts);
+      win && !win.isDestroyed() ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
     return canceled ? null : (filePaths[0] ?? null);
   });
 
@@ -99,18 +93,12 @@ export function registerIpc(ctx: AppContext): void {
 
   ipcMain.handle(CH.overlayBoot, (event) => onOverlayBoot(event.sender));
   ipcMain.handle(CH.overlayReady, (event) => onOverlayReady(event.sender));
-  ipcMain.handle(CH.overlayInput, (event, payload: OverlayInput) =>
-    onOverlayInput(event.sender, payload),
-  );
+  ipcMain.handle(CH.overlayInput, (event, payload: OverlayInput) => onOverlayInput(event.sender, payload));
 
   // ------------------------------------------------- 遮罩阶段的标注
-  ipcMain.handle(CH.overlayTool, (event, payload: { tool: ToolId }) =>
-    onOverlayTool(event.sender, payload.tool),
-  );
-  ipcMain.handle(
-    CH.overlayAction,
-    (event, payload: { kind: OverlayActionKind }) =>
-      onOverlayAction(event.sender, payload.kind),
+  ipcMain.handle(CH.overlayTool, (event, payload: { tool: ToolId }) => onOverlayTool(event.sender, payload.tool));
+  ipcMain.handle(CH.overlayAction, (event, payload: { kind: OverlayActionKind }) =>
+    onOverlayAction(event.sender, payload.kind),
   );
   ipcMain.handle(CH.overlayShapes, (event, payload: { shapes: Shape[] }) =>
     onOverlayShapes(event.sender, payload.shapes),
@@ -118,15 +106,11 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(CH.overlayDraft, (event, payload: { draft: Shape | null }) =>
     onOverlayDraft(event.sender, payload.draft),
   );
-  ipcMain.handle(
-    CH.overlayInFlight,
-    (event, payload: { index: number | null }) =>
-      onOverlayInFlight(event.sender, payload.index),
+  ipcMain.handle(CH.overlayInFlight, (event, payload: { index: number | null }) =>
+    onOverlayInFlight(event.sender, payload.index),
   );
-  ipcMain.handle(
-    CH.overlayEditState,
-    (event, payload: { textEditing: boolean }) =>
-      onOverlayEditState(event.sender, payload.textEditing),
+  ipcMain.handle(CH.overlayEditState, (event, payload: { textEditing: boolean }) =>
+    onOverlayEditState(event.sender, payload.textEditing),
   );
   // 光标所在屏的遮罩请求前台：没有焦点的话，Ctrl+Z / C 等键盘事件会打到上一块屏的窗口
   ipcMain.handle(CH.overlayFocus, (event) => {
@@ -135,26 +119,21 @@ export function registerIpc(ctx: AppContext): void {
   });
 
   // 放大镜复制颜色值
-  ipcMain.handle(
-    CH.overlayCopyText,
-    async (_event, payload: { text: string }) => {
-      try {
-        await copyText(payload.text);
-        return { ok: true };
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    },
-  );
+  ipcMain.handle(CH.overlayCopyText, async (_event, payload: { text: string }) => {
+    try {
+      await copyText(payload.text);
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
 
   // 遮罩就地合成好的 PNG：进剪贴板 / 存盘，随后结束截图
-  ipcMain.handle(
-    CH.overlayExport,
-    (event, payload: { kind: 'copy' | 'save'; png: Uint8Array }) =>
-      onOverlayExport(event.sender, payload.kind, payload.png),
+  ipcMain.handle(CH.overlayExport, (event, payload: { kind: 'copy' | 'save'; png: Uint8Array }) =>
+    onOverlayExport(event.sender, payload.kind, payload.png),
   );
 
   // ---------------------------------------------------------- 钉图窗口
@@ -166,9 +145,7 @@ export function registerIpc(ctx: AppContext): void {
   );
 
   // -------------------------------------------------------- 滚动截长图
-  ipcMain.handle(CH.scrollAction, (event, payload: ScrollActionPayload) =>
-    onScrollAction(event.sender, payload),
-  );
+  ipcMain.handle(CH.scrollAction, (event, payload: ScrollActionPayload) => onScrollAction(event.sender, payload));
 
   ipcMain.handle(CH.pinReady, (event) => {
     if (ownsPendingPin(event.sender)) markPinReady(event.sender);
@@ -186,11 +163,7 @@ export function registerIpc(ctx: AppContext): void {
           await copyPng(payload.png);
           return { ok: true };
         case 'save':
-          await savePng(
-            win,
-            payload.png,
-            payload.suggestedName || defaultSnipName(),
-          );
+          await savePng(win, payload.png, payload.suggestedName || defaultSnipName());
           return { ok: true };
         case 'close':
           win.close();
@@ -209,9 +182,7 @@ export function registerIpc(ctx: AppContext): void {
           return { ok: true };
         }
         case 'opacity':
-          win.setOpacity(
-            Math.min(1, Math.max(0.15, win.getOpacity() + payload.delta)),
-          );
+          win.setOpacity(Math.min(1, Math.max(0.15, win.getOpacity() + payload.delta)));
           return { ok: true };
         case 'ignore': {
           const next = !mouseIgnored.has(win);

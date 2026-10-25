@@ -58,6 +58,40 @@ export function hitHandle(
   return null;
 }
 
+/** 边框中段的命中带宽度 —— 比角手柄（HANDLE_HIT_DIP）窄一档，
+ *  控制绘图工具下「贴边起笔变调整」的误触面。 */
+export const BORDER_HIT_DIP = 6;
+
+/**
+ * 光标/按下点压在选区**边框**上的哪一段：角 → 对角手柄，边中段 → 该边。
+ * 与 hitHandle 的 8 点手柄测试互补 —— 手柄只覆盖角与边中点周围，这里让
+ * 整条边框都成为调整大小的操作位（标准的窗口缩放交互）。光标与按下
+ * 路由必须走同一套组合（先 hitHandle 后 hitBorder），否则会错位。
+ */
+export function hitBorder(
+  rect: Rect,
+  p: Point,
+  threshold = BORDER_HIT_DIP,
+): HandleId | null {
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const nearL = Math.abs(p.x - rect.x) <= threshold;
+  const nearR = Math.abs(p.x - (rect.x + rect.width)) <= threshold;
+  const nearT = Math.abs(p.y - rect.y) <= threshold;
+  const nearB = Math.abs(p.y - (rect.y + rect.height)) <= threshold;
+  if (!nearL && !nearR && !nearT && !nearB) return null;
+  const inX = p.x >= rect.x && p.x <= rect.x + rect.width;
+  const inY = p.y >= rect.y && p.y <= rect.y + rect.height;
+  if (nearT && nearL) return 'nw';
+  if (nearT && nearR) return 'ne';
+  if (nearB && nearL) return 'sw';
+  if (nearB && nearR) return 'se';
+  if (nearT && inX) return 'n';
+  if (nearB && inX) return 's';
+  if (nearL && inY) return 'w';
+  if (nearR && inY) return 'e';
+  return null;
+}
+
 /**
  * 遮罩渲染进程用：手柄先换算到本窗口坐标，**落在窗外的直接跳过** ——
  * 跨屏选区的某个角可能在另一块屏上，那边由那块屏的遮罩画/响应，

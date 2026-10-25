@@ -54,5 +54,8 @@
   },
   "author": {
     "name": "dsjerry"
+  },
+  "optionalDependencies": {
+    "electron-liquid-glass": "1.1.1"
   }
 }

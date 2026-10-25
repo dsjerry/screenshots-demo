@@ -1,5 +1,5 @@
 import { Menu, Tray, nativeImage, app } from 'electron';
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, Rectangle } from 'electron';
 
 /**
  * 16×16 内联图标：用 createFromBitmap 直接从 BGRA 像素生成，
@@ -23,10 +23,7 @@ function buildTrayImage() {
     for (let x = 0; x < size; x++) {
       // 四角切出 2px 圆角
       const corner =
-        (x < 2 && y < 2) ||
-        (x > size - 3 && y < 2) ||
-        (x < 2 && y > size - 3) ||
-        (x > size - 3 && y > size - 3);
+        (x < 2 && y < 2) || (x > size - 3 && y < 2) || (x < 2 && y > size - 3) || (x > size - 3 && y > size - 3);
       if (corner) set(x, y, 0, 0, 0, 0);
       else set(x, y, BG[0], BG[1], BG[2]);
     }
@@ -55,6 +52,8 @@ export interface TrayCallbacks {
   /** 延迟 N 毫秒后触发截图 */
   onSnipDelay(ms: number): void;
   onShowMain(): void;
+  /** 托盘左键：主窗口显示 / 隐藏开关 */
+  onToggleMain(): void;
   onHistory(): void;
   /** 全部贴图恢复鼠标（解除点击穿透） */
   onRestorePins(): void;
@@ -85,13 +84,19 @@ export function createTray(cb: TrayCallbacks): Tray {
     },
   ]);
 
-  tray.on('click', () => cb.onSnip());
+  // 左键 = 主窗口显示 / 隐藏开关（两平台一致）；截图走快捷键 / 右键菜单
+  tray.on('click', () => cb.onToggleMain());
   // Windows 不会自动弹右键菜单，必须显式调用
   tray.on('right-click', () => {
     tray?.popUpContextMenu(menu);
   });
 
   return tray;
+}
+
+/** 托盘图标的屏幕位置（主窗口 HUD 定位用）；托盘未创建时返回 null。 */
+export function getTrayBounds(): Rectangle | null {
+  return tray?.getBounds() ?? null;
 }
 
 export function destroyTray(): void {

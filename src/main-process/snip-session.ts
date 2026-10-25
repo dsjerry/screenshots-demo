@@ -1,4 +1,6 @@
-import { BrowserWindow, nativeImage, screen } from 'electron';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { app, BrowserWindow, nativeImage, screen } from 'electron';
 import type { Rectangle, WebContents } from 'electron';
 import { captureDisplays, resolveOutScale, unionBounds } from './capture';
 import {
@@ -36,6 +38,7 @@ import type { PinPadding } from '../shared/pin-layout';
 import {
   clampRect,
   hitHandle,
+  hitBorder,
   moveRect,
   pointInRect,
   resizeRect,
@@ -260,20 +263,80 @@ function rectFrom(a: Point, b: Point): Rect {
 // --------------------------------------------------- 悬停窗口捕获
 
 /**
- * get-windows 是 ESM-only 包，主进程（CJS bundle）里用动态 import 惰性加载；
- * 原生部分是 N-API 预编译二进制，与 Electron 的 ABI 无关。
+ * macOS 走自带探针 window-probe（resources/ 下的 ObjC 小工具）：CGWindowList
+ * 取 bounds / z 序 / PID，不需要任何 TCC 授权（get-windows 在 mac 上要
+ * 「辅助功能」权限），单次 fork+执行约 10ms。Windows 仍用 get-windows
+ * （ESM-only 包，主进程 CJS bundle 里动态 import 惰性加载；原生部分是
+ * N-API 预编译二进制，与 Electron 的 ABI 无关）。
  */
 let getWindowsModule: typeof import('get-windows') | null = null;
 
-/**
- * 悬停轮询间隔：原生枚举全窗口，太频白烧 CPU，太慢高亮跟不上手。
- * macOS 的 openWindowsSync 每次调用都要 fork 一个 Swift 子进程
- * （get-windows 的实现），15Hz 会把主进程拖卡 —— 降到 ~7Hz，高亮
- * 略迟但流畅；Windows 的调用便宜，维持 64ms 跟手。
- */
-const HOVER_POLL_MS = process.platform === 'darwin' ? 150 : 64;
+function windowProbePath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'window-probe')
+    : path.join(app.getAppPath(), 'resources', 'window-probe');
+}
 
-/** openWindowsSync 慢调用告警的节流间隔（perf 排查用） */
+/** 探针输出 [{pid,x,y,w,h}]；坐标是全局「点」＝ mac 的 DIP，直接当 DIP 用 */
+function listHoverWindowsMac(): Promise<Rect[]> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(windowProbePath(), ['--exclude-pid', String(process.pid)]);
+    let out = '';
+    let err = '';
+    const timer = setTimeout(() => {
+      p.kill();
+      reject(new Error('窗口探针超时'));
+    }, 2000);
+    p.stdout.on('data', (d: Buffer) => {
+      out += String(d);
+    });
+    p.stderr.on('data', (d: Buffer) => {
+      err += String(d);
+    });
+    p.on('error', reject);
+    p.on('exit', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(err.trim() || `窗口探针退出码 ${code}`));
+        return;
+      }
+      try {
+        const list = JSON.parse(out) as { x: number; y: number; w: number; h: number }[];
+        resolve(list.map((w) => ({ x: w.x, y: w.y, width: w.w, height: w.h })));
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  });
+}
+
+/** win 的 get-windows 返回物理像素，换算成 DIP；并显式排除自家窗口 */
+async function listHoverWindowsWin(): Promise<Rect[]> {
+  if (!getWindowsModule) getWindowsModule = await import('get-windows');
+  const windows = await getWindowsModule.openWindows();
+  return windows
+    .filter(
+      (win) =>
+        win.owner.processId !== process.pid && win.bounds.width > 0 && win.bounds.height > 0,
+    )
+    .map((win) => {
+      const p1 = screen.screenToDipPoint({ x: win.bounds.x, y: win.bounds.y });
+      const p2 = screen.screenToDipPoint({
+        x: win.bounds.x + win.bounds.width,
+        y: win.bounds.y + win.bounds.height,
+      });
+      return { x: p1.x, y: p1.y, width: p2.x - p1.x, height: p2.y - p1.y };
+    });
+}
+
+/**
+ * 悬停轮询间隔：枚举全窗口太频白烧 CPU，太慢高亮跟不上手。两平台单次
+ * 开销都在几毫秒级（mac 探针 fork+执行 ~10ms、win 进程内原生调用），
+ * 统一 64ms 跟手。
+ */
+const HOVER_POLL_MS = 64;
+
+/** 窗口枚举慢调用告警的节流间隔（perf 排查用） */
 let lastHoverSlowWarn = 0;
 
 function startHoverPoll(s: Session): void {
@@ -291,9 +354,10 @@ function stopHoverPoll(s: Session | null): void {
 }
 
 /**
- * 检测光标下的应用窗口：按 z 序取第一个包含光标的**第三方**窗口。
- * 必须过滤自家进程 —— 截图时满屏遮罩就是最顶层窗口，不过滤永远命中的是自己。
- * get-windows 返回物理像素，先用 screenToDipPoint 换算再与光标（DIP）比较。
+ * 检测光标下的应用窗口：按 z 序取第一个包含光标的窗口。
+ * 自家进程必须排除 —— 截图时满屏遮罩就是最顶层窗口，不过滤永远命中的
+ * 是自己：mac 探针在源头带 --exclude-pid，win 侧在 listHoverWindowsWin
+ * 里按 owner PID 过滤。两个 lister 的出口都保证「DIP + z 序 + 无自家窗口」。
  */
 async function detectHoverWindow(s: Session): Promise<void> {
   // 只有「还没框选、也没在拖」的 selecting 阶段做窗口捕获；窗口捕获
@@ -313,29 +377,20 @@ async function detectHoverWindow(s: Session): Promise<void> {
   if (s.hoverBusy) return;
   s.hoverBusy = true;
   try {
-    if (!getWindowsModule) getWindowsModule = await import('get-windows');
     const cursor = screen.getCursorScreenPoint();
-    const candidates: Rect[] = [];
     const tList = performance.now();
-    const windows = getWindowsModule.openWindowsSync();
+    // mac 探针是 fork+exec 子进程，用异步 spawn 等待，枚举期间 UI 照常跑
+    const rects =
+      process.platform === 'darwin' ? await listHoverWindowsMac() : await listHoverWindowsWin();
     const listMs = Math.round(performance.now() - tList);
     if (listMs > 20 && Date.now() - lastHoverSlowWarn > 3000) {
       lastHoverSlowWarn = Date.now();
       console.warn(
-        `[snip] openWindowsSync 耗时 ${listMs}ms（窗口数 ${windows.length}），` +
+        `[snip] 窗口枚举耗时 ${listMs}ms（窗口数 ${rects.length}），` +
           `轮询间隔 ${HOVER_POLL_MS}ms —— 主进程可能被它拖卡`,
       );
     }
-    for (const win of windows) {
-      const b = win.bounds;
-      if (b.width <= 0 || b.height <= 0) continue;
-      const p1 = screen.screenToDipPoint({ x: b.x, y: b.y });
-      const p2 = screen.screenToDipPoint({ x: b.x + b.width, y: b.y + b.height });
-      const dip = { x: p1.x, y: p1.y, width: p2.x - p1.x, height: p2.y - p1.y };
-      if (pointInRect(dip, cursor)) {
-        candidates.push(dip);
-      }
-    }
+    const candidates = rects.filter((dip) => pointInRect(dip, cursor));
     if (session !== s) return;
     // Tab 轮换：候选窗口数量变了（光标移动 / 开关窗口）就重置轮换位置
     if (candidates.length !== s.hoverCandidates.length) s.hoverIndex = 0;
@@ -686,7 +741,9 @@ export function onOverlayInput(sender: WebContents, payload: OverlayInput): void
       // 已有选区时先判断这一下是调手柄、整体移动，还是重新框选
       const prev = s.selection;
       if (s.phase === 'adjusting' && prev && hasRealSelection(prev)) {
-        const handle = hitHandle(prev, p);
+        // 手柄（12 DIP 8 点）优先，边框中段（6 DIP 带）兜底 —— 与遮罩
+        // 渲染端 hitResizeZone 同一组合，光标说能调按下去就得能调
+        const handle = hitHandle(prev, p) ?? hitBorder(prev, p);
         if (handle) {
           s.mode = { kind: 'resize', origin: { ...prev }, handle, start: p };
           startPoll(s);

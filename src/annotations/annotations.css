@@ -76,20 +76,46 @@
   color: #ffffff;
 }
 
-/* 主操作（确定类）：绿色，对应业界通行的 ✓ */
+/* 主操作（确定类）：绿色轻强调（tonal）—— 低透明度绿底 + 绿图标。
+   不用实心填充：实心在这套工具条里承载的是「选中/激活」语义，常驻
+   实心绿会让钉图看起来像默认开启的开关。 */
 .toolbar button.is-primary {
-  background: #1f9d55;
-  border-color: #2bb673;
-  color: #ffffff;
+  background: rgba(74, 222, 128, 0.14);
+  border-color: rgba(74, 222, 128, 0.38);
+  color: #4ade80;
 }
 
 .toolbar button.is-primary:hover:not(:disabled) {
-  background: #23a862;
+  background: rgba(74, 222, 128, 0.24);
+  border-color: rgba(74, 222, 128, 0.55);
 }
 
 .toolbar button.is-danger:hover {
   background: rgba(255, 59, 48, 0.85);
   color: #ffffff;
+}
+
+/* ---------------- 悬停名称提示 ---------------- */
+
+/* 悬停即现的名称提示（原生 title 延迟约 1s，容易被忽略）。
+   ::after 已被分组分隔线占用，提示走 ::before；外观与工具条行一致。 */
+.toolbar button[data-tip]:hover::before,
+.toolbar button[data-tip]:focus-visible::before {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(24, 26, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e8eaed;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .toolbar .swatch {

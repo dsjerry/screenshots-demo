@@ -8,15 +8,13 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import path from 'node:path';
 
-// get-windows / koffi 已在 vite.main.config 外部化（原生 .node 不能进
-// bundle），打包时必须以文件形式随 app 发布 —— 这里从真实 node_modules
-// 算出它们的运行时依赖闭包（get-windows 运行时要 require
-// @mapbox/node-pre-gyp 定位 .node）。node-gyp / node-addon-api 只在
-// 安装期编译用，不进包。
+// 原生模块已在 vite.main.config 外部化，打包时必须以文件形式随 app
+// 发布 —— 这里从真实 node_modules 算出它们的运行时依赖闭包。
+// node-gyp / node-addon-api 只在安装期编译用，不进包。
 const INSTALL_ONLY_MODULES = new Set(['node-gyp', 'node-addon-api']);
-const SCROLL_RUNTIME_MODULES = (() => {
-  const wanted = new Set(['get-windows', 'koffi']);
-  const queue = ['get-windows', 'koffi'];
+const RUNTIME_MODULES = (() => {
+  const wanted = new Set(['get-windows', 'koffi', 'electron-liquid-glass']);
+  const queue = [...wanted];
   while (queue.length > 0) {
     const name = queue.pop() as string;
     let pj: { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> };
@@ -26,10 +24,7 @@ const SCROLL_RUNTIME_MODULES = (() => {
     } catch {
       continue;
     }
-    const deps = [
-      ...Object.keys(pj.dependencies ?? {}),
-      ...Object.keys(pj.optionalDependencies ?? {}),
-    ];
+    const deps = [...Object.keys(pj.dependencies ?? {}), ...Object.keys(pj.optionalDependencies ?? {})];
     for (const dep of deps) {
       if (!wanted.has(dep) && !INSTALL_ONLY_MODULES.has(dep)) {
         wanted.add(dep);
@@ -41,28 +36,28 @@ const SCROLL_RUNTIME_MODULES = (() => {
 })();
 
 /** 白名单模块的完整路径前缀（带尾斜杠） */
-const RUNTIME_PREFIXES = SCROLL_RUNTIME_MODULES.map(
-  (m) => `/node_modules/${m}/`,
-);
+const RUNTIME_PREFIXES = RUNTIME_MODULES.map((m) => `/node_modules/${m}/`);
 /**
  * 是否属于运行时闭包：文件落在白名单模块内，**或是通往白名单模块的
  * 祖先目录**（`/node_modules`、`/node_modules/@koromix` 这类目录本身
  * 不在白名单前缀里，不判祖先的话整个目录在下钻前就被跳过）。
  */
 function inRuntimeClosure(file: string): boolean {
-  return RUNTIME_PREFIXES.some(
-    (prefix) => file.startsWith(prefix) || prefix.startsWith(`${file}/`),
-  );
+  return RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix) || prefix.startsWith(`${file}/`));
 }
 
 const config: ForgeConfig = {
   packagerConfig: {
     // Squirrel 安装包的 nuspec 必需 authors；exe 元数据里的产品名
     executableName: 'screenshots',
+    // macOS 悬停窗口探针（universal 二进制）——extraResource 直达
+    // Contents/Resources/window-probe，运行时经 process.resourcesPath 取用。
+    // 源码与构建脚本在 repo 的 resources/ 下，被 ignore 排除、不进 asar。
+    extraResource: ['./resources/window-probe'],
     // 原生 .node 不能从 asar 内加载 —— 必须解包到 app.asar.unpacked
-    // （get-windows 的 N-API 二进制 + koffi 的平台包 @koromix/koffi-*）
+    // （get-windows / koffi / Liquid Glass 的 N-API 二进制）
     asar: {
-      unpack: '**/node_modules/{get-windows/lib/binding,@koromix}/**/*.node',
+      unpack: '**/node_modules/{get-windows/lib/binding,@koromix,electron-liquid-glass}/**/*.node',
     },
     ignore: (file) => {
       if (!file) return false;
@@ -75,8 +70,8 @@ const config: ForgeConfig = {
       return true;
     },
   },
-  // onlyModules: [] = rebuild 阶段不重建任何模块。唯一的原生依赖
-  // get-windows 是 N-API 预编译二进制（ABI 与 Electron 版本无关），
+  // onlyModules: [] = rebuild 阶段不重建任何模块。原生依赖均为 N-API
+  // 预编译二进制（ABI 与 Electron 版本无关），
   // 无需重编；反而 @electron/rebuild 会把它误判成 node-gyp 模块
   // （node-pre-gyp 装在顶层没被识别），进而要求 VS 编译环境 —— 本机
   // 只有 VS 18，@electron/node-gyp 最高只认到 v17，直接编译失败。
@@ -84,12 +79,7 @@ const config: ForgeConfig = {
   rebuildConfig: {
     onlyModules: [],
   },
-  makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
-  ],
+  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
     new VitePlugin({
       build: [
