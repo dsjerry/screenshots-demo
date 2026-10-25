@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="base" x1="0.12" y1="0" x2="0.88" y2="1">
+      <stop offset="0" stop-color="#0d1a46" />
+      <stop offset="0.42" stop-color="#1f49c7" />
+      <stop offset="0.74" stop-color="#2f78ff" />
+      <stop offset="1" stop-color="#5ad8ff" />
+    </linearGradient>
+    <radialGradient id="glowTop" cx="0.24" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#9ff4ff" stop-opacity="0.58" />
+      <stop offset="1" stop-color="#9ff4ff" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowBottom" cx="0.84" cy="0.9" r="0.58">
+      <stop offset="0" stop-color="#ffd37a" stop-opacity="0.34" />
+      <stop offset="1" stop-color="#ffd37a" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="window" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.96" />
+      <stop offset="0.5" stop-color="#e8fbff" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#b6e5ff" stop-opacity="0.9" />
+    </linearGradient>
+    <linearGradient id="scene" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3f7bff" />
+      <stop offset="0.6" stop-color="#2a5cf0" />
+      <stop offset="1" stop-color="#1a3ea8" />
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.34" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="frameLine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f6cff" />
+      <stop offset="1" stop-color="#56c4ff" />
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff8c8" />
+      <stop offset="1" stop-color="#8cf7ff" />
+    </linearGradient>
+    <filter id="cardShadow" x="-25%" y="-25%" width="150%" height="160%">
+      <feDropShadow dx="0" dy="34" stdDeviation="30" flood-color="#06133a" flood-opacity="0.42" />
+    </filter>
+    <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="22" />
+    </filter>
+    <clipPath id="sceneClip">
+      <rect x="366" y="386" width="292" height="208" rx="40" />
+    </clipPath>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#base)" />
+  <rect width="1024" height="1024" rx="232" fill="url(#glowTop)" />
+  <rect width="1024" height="1024" rx="232" fill="url(#glowBottom)" />
+
+  <g transform="translate(512 512) rotate(-5) scale(1.42) translate(-512 -512)" filter="url(#cardShadow)">
+    <rect
+      x="262"
+      y="260"
+      width="500"
+      height="504"
+      rx="136"
+      fill="#ffffff"
+      fill-opacity="0.14"
+      stroke="#ffffff"
+      stroke-opacity="0.42"
+      stroke-width="10"
+    />
+    <rect
+      x="300"
+      y="298"
+      width="424"
+      height="428"
+      rx="110"
+      fill="url(#window)"
+      stroke="#ffffff"
+      stroke-opacity="0.9"
+      stroke-width="14"
+    />
+
+    <g clip-path="url(#sceneClip)">
+      <rect x="366" y="386" width="292" height="208" fill="url(#scene)" />
+      <rect x="366" y="386" width="292" height="208" fill="url(#sky)" />
+      <circle cx="586" cy="446" r="30" fill="#fff5b8" />
+      <circle cx="586" cy="446" r="56" fill="#fff5b8" fill-opacity="0.26" filter="url(#softGlow)" />
+      <path d="M366 548c42-50 82-66 118-48 38 20 58 50 92 52 44 2 64-36 82-62v104H366Z" fill="#17388f" fill-opacity="0.9" />
+      <path d="M366 594v-30c52-46 100-62 146-48 36 10 56 32 94 30 26-2 42-12 52-24v72Z" fill="#0f275f" />
+    </g>
+
+    <path
+      d="M392 350h-26c-16 0-30 14-30 30v26M632 350h26c16 0 30 14 30 30v26M336 624v26c0 16 14 30 30 30h26M688 624v26c0 16-14 30-30 30h-26"
+      fill="none"
+      stroke="url(#frameLine)"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="30"
+    />
+
+    <circle cx="512" cy="666" r="26" fill="#ffffff" fill-opacity="0.92" />
+    <circle cx="512" cy="666" r="13" fill="#2d6cff" />
+
+    <circle cx="748" cy="300" r="60" fill="#8cf7ff" fill-opacity="0.34" filter="url(#softGlow)" />
+    <path d="M748 236c11 40 22 51 62 62-40 11-51 22-62 62-11-40-22-51-62-62 40-11 51-22 62-62Z" fill="url(#spark)" />
+  </g>
+</svg>

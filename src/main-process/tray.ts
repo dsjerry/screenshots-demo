@@ -4,7 +4,7 @@ import type { BrowserWindow, Rectangle } from 'electron';
 /**
  * 16×16 内联图标：用 createFromBitmap 直接从 BGRA 像素生成，
  * 不需要任何资源文件（也就不存在打包路径问题）。
- * 图案是白框取景器 + 中心白点，底色 #2F6FED。
+ * 图案是白框取景器 + 四向微光，底色 #2F6FED，与主图标保持同一意象。
  */
 function buildTrayImage() {
   const size = 16;
@@ -41,8 +41,12 @@ function buildTrayImage() {
     mark(3 + i, 12);
     mark(3, 12 - i);
   }
-  // 中心点
-  for (let y = 7; y <= 8; y++) for (let x = 7; x <= 8; x++) mark(x, y);
+  // 中心微光
+  mark(7, 7);
+  mark(7, 6);
+  mark(8, 7);
+  mark(7, 8);
+  mark(6, 7);
 
   return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }

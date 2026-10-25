@@ -13,16 +13,34 @@
     <main class="shell">
       <header class="head">
         <span class="logo" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 16 16">
-            <rect width="16" height="16" rx="4" fill="#2f6fed" />
+          <svg width="24" height="24" viewBox="0 0 24 24">
+            <defs>
+              <linearGradient id="logo-bg" x1="0" y1="0" x2="1" y2="1">
+                <stop stop-color="#19346f" />
+                <stop offset="1" stop-color="#4d82f8" />
+              </linearGradient>
+              <linearGradient id="logo-glint" x1="0" y1="0" x2="1" y2="1">
+                <stop stop-color="#f7ffca" />
+                <stop offset="1" stop-color="#a0fff0" />
+              </linearGradient>
+            </defs>
+            <rect x="1" y="1" width="22" height="22" rx="7" fill="url(#logo-bg)" />
+            <rect x="5.5" y="5.5" width="13" height="13" rx="3.6" fill="#eef9ff" />
+            <rect x="8" y="8" width="8" height="5.6" rx="1.6" fill="#2d5fe6" />
+            <circle cx="14" cy="9.8" r="0.9" fill="#fff0b0" />
+            <path d="M8 13.6c1.6-1.6 3-2 4.4-.8 1.2 1 2.2.8 3.6-.4v1.2H8Z" fill="#112a6f" />
             <path
-              d="M3 5.5V3h2.5 M10.5 3H13v2.5 M13 10.5V13h-2.5 M5.5 13H3v-2.5"
-              stroke="#fff"
-              stroke-width="1.6"
+              d="M8.2 6.8h-.9a.8.8 0 0 0-.8.8v.9m8.3-1.7h.9a.8.8 0 0 1 .8.8v.9m-9.2 7.8v.9a.8.8 0 0 0 .8.8h.9m8.3-1.7v.9a.8.8 0 0 1-.8.8h-.9"
               fill="none"
+              stroke="#3b7cff"
               stroke-linecap="round"
+              stroke-width="1.1"
             />
-            <circle cx="8" cy="8" r="1.4" fill="#fff" />
+            <circle cx="12" cy="16.2" r="0.9" fill="#2d6cff" />
+            <path
+              d="M18.2 3.6c.3 1.1.6 1.4 1.7 1.7-1.1.3-1.4.6-1.7 1.7-.3-1.1-.6-1.4-1.7-1.7 1.1-.3 1.4-.6 1.7-1.7Z"
+              fill="url(#logo-glint)"
+            />
           </svg>
         </span>
         <h1>截图工具</h1>
