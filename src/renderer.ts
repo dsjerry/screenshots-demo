@@ -174,12 +174,10 @@ glassTransparencyInput.addEventListener('input', () => {
 });
 
 glassTransparencyInput.addEventListener('change', () => {
-  void window.api.settings
-    .set({ glassTransparency: Number(glassTransparencyInput.value) })
-    .catch((err: unknown) => {
-      status(err instanceof Error ? err.message : String(err));
-      void loadSettings();
-    });
+  void window.api.settings.set({ glassTransparency: Number(glassTransparencyInput.value) }).catch((err: unknown) => {
+    status(err instanceof Error ? err.message : String(err));
+    void loadSettings();
+  });
 });
 
 savedirBtn.addEventListener('click', () => {
