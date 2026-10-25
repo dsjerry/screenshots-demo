@@ -237,6 +237,8 @@ async function prepareInjector(): Promise<{
  * 不再出现「光标被拽回去、停不下来」的对抗。
  */
 export async function startAutoScroll(): Promise<boolean> {
+  // 注入器是 user32 专属 —— mac 上直接拒绝，别让 koffi.load 抛错
+  if (process.platform !== 'win32') return false;
   if (auto || !state) return false;
   const io = await prepareInjector();
   const region = state.region;

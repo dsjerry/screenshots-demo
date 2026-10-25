@@ -34,6 +34,15 @@ const PROBE_ROWS = 24;
 const BOTTOM_MARGIN = 200;
 /** 连续这么久没新内容就提示可以收手了（不自动停，用户可能只是暂停） */
 const IDLE_HINT_FRAMES = 8;
+/** 探针连续失配这么多帧后，改用「帧顶行」在累积缓冲里重同步 ——
+ *  滚动过快（一帧滚过近整屏）时探针内容可能已滚出视口，帧顶行通常
+ *  仍能在累积缓冲里找到对位；找不到说明出了真正的空档，只能丢帧提示 */
+const DESYNC_RESYNC_FRAMES = 2;
+/** 帧顶重同步的锚行数 */
+const TOP_ANCHOR_ROWS = 6;
+
+/** 当前探针失配的连续帧数（成功追加或完美对齐都会清零） */
+let desyncFrames = 0;
 
 /**
  * 本次探针的取行区间：[start, start + PROBE_ROWS)。
@@ -42,8 +51,11 @@ const IDLE_HINT_FRAMES = 8;
  */
 function probeStart(): number {
   if (!acc) return 0;
-  const margin = Math.min(BOTTOM_MARGIN, Math.floor((acc.height - PROBE_ROWS) / 2));
-  return acc.height - PROBE_ROWS - margin;
+  const margin = Math.min(
+    BOTTOM_MARGIN,
+    Math.max(0, Math.floor((acc.height - PROBE_ROWS) / 2)),
+  );
+  return Math.max(0, acc.height - PROBE_ROWS - margin);
 }
 
 interface Accum {
@@ -63,11 +75,14 @@ let mode: 'manual' | 'auto' = 'manual';
 /** 自动模式下判定「到底」的静默帧数（6 帧 ≈ 1.5s 无新内容） */
 const AUTO_BOTTOM_IDLE_FRAMES = 6;
 let bottomNotified = false;
+/** 「到底」已停止注入；再出现新内容时自动恢复注入（懒加载长页会误判到底） */
+let autoStoppedByBottom = false;
 
 const HINT_DEFAULT = '滚动鼠标滚轮追加内容';
 const HINT_AUTO = '自动滚动中，移出选区即暂停';
 const HINT_BOTTOM = '已到底部，可复制 / 保存';
 const HINT_IDLE = '未检测到新内容，可点击复制 / 保存';
+const HINT_DESYNC = '滚动过快没对齐，已尝试自动续接；建议放慢速度';
 
 const modeManualBtn = document.getElementById('mode-manual') as HTMLButtonElement;
 const modeAutoBtn = document.getElementById('mode-auto') as HTMLButtonElement;
@@ -79,6 +94,8 @@ function setMode(next: 'manual' | 'auto'): void {
   modeManualBtn.classList.toggle('is-active', mode === 'manual');
   modeAutoBtn.classList.toggle('is-active', mode === 'auto');
   bottomNotified = false;
+  desyncFrames = 0;
+  autoStoppedByBottom = false;
   hintEl.textContent = mode === 'auto' ? HINT_AUTO : HINT_DEFAULT;
   void window.api.scroll
     .action({ kind: mode })
@@ -104,17 +121,27 @@ speedBtn.addEventListener('click', () => {
   void window.api.scroll.action({ kind: 'speed', speed }).catch(() => {});
 });
 
+// 自动滚动依赖 Win32 滚轮注入（user32），mac 没有对应实现 —— 按钮藏掉，
+// 不然点了只是空欢喜：提示写着「自动滚动中」却什么都不会滚
+const isMac = /mac/i.test(navigator.platform);
+if (isMac) {
+  modeAutoBtn.hidden = true;
+  speedBtn.hidden = true;
+}
+
 function updateStatus(): void {
   if (!acc) return;
   sizeEl.textContent = `${acc.width} × ${acc.height}`;
   hintEl.textContent =
     mode === 'auto' && bottomNotified
       ? HINT_BOTTOM
-      : idleFrames >= IDLE_HINT_FRAMES
-        ? HINT_IDLE
-        : mode === 'auto'
-          ? HINT_AUTO
-          : HINT_DEFAULT;
+      : desyncFrames >= DESYNC_RESYNC_FRAMES
+        ? HINT_DESYNC
+        : idleFrames >= IDLE_HINT_FRAMES
+          ? HINT_IDLE
+          : mode === 'auto'
+            ? HINT_AUTO
+            : HINT_DEFAULT;
 }
 
 /** 单行指纹：64 列、每列横向取 3 像素均值的亮度。 */
@@ -200,6 +227,33 @@ function appendStrip(strip: Uint8ClampedArray, srcRow: number, count: number): v
   acc.height += count;
 }
 
+/**
+ * 帧顶 TOP_ANCHOR_ROWS 行在累积缓冲里的最佳对位（行签名）。
+ * 探针失配后的重同步手段：探针内容已滚出视口时，帧顶行通常还能在
+ * 累积缓冲里找到；返回 -1 = 找不到（真空档，只能丢帧）。
+ */
+function topAnchorInAcc(stripSigs: Float32Array[]): number {
+  if (!acc) return -1;
+  const limit = acc.height - TOP_ANCHOR_ROWS;
+  if (limit < 0) return -1;
+  let best = -1;
+  let bestDiff = Infinity;
+  for (let a = 0; a <= limit; a++) {
+    let sum = 0;
+    for (let r = 0; r < TOP_ANCHOR_ROWS; r++) {
+      const x = acc.sigs[a + r];
+      const y = stripSigs[r];
+      for (let c = 0; c < SIG_COLS; c++) sum += Math.abs(x[c] - y[c]);
+    }
+    const d = sum / (TOP_ANCHOR_ROWS * SIG_COLS);
+    if (d < bestDiff) {
+      bestDiff = d;
+      best = a;
+    }
+  }
+  return bestDiff <= MATCH_THRESHOLD ? best : -1;
+}
+
 window.api.scroll.frame((frame: ScrollFramePayload) => {
   const strip = new Uint8ClampedArray(frame.pixels);
   const { width, height } = frame;
@@ -218,6 +272,8 @@ window.api.scroll.frame((frame: ScrollFramePayload) => {
     return;
   }
   if (width !== acc.width || height <= PROBE_ROWS + 4) return;
+  // 极小选区：累积高度不足一个探针，无法匹配（再往下签名访问会越界）
+  if (acc.height < PROBE_ROWS) return;
 
   // 探针 = 累积缓冲里越过贴底静止带的一段（见 BOTTOM_MARGIN），在**新帧
   // 任意位置**定位它。不能用「帧顶对帧底」的重叠模型：窗口捕获整窗采纳
@@ -263,11 +319,34 @@ window.api.scroll.frame((frame: ScrollFramePayload) => {
   // bestT + (H - pStart) —— 之后才是真正的新内容（含被边距跳过的部分）
   const appendStart = bestT + (acc!.height - pStart);
   const newRows = height - appendStart;
-  if (bestT < 0 || best > MATCH_THRESHOLD || newRows <= 0) {
+  if (best > MATCH_THRESHOLD) {
+    // 探针没对上 —— 滚动过快时探针内容可能已滚出视口。连续两帧后改用
+    // 帧顶行在累积缓冲里重同步：找得到就无缝续接；找不到说明两帧之间
+    // 出现了真实空档（内容跳过去了），只能丢帧并提示放慢
+    desyncFrames++;
+    if (desyncFrames >= DESYNC_RESYNC_FRAMES) {
+      const a = topAnchorInAcc(stripSigs);
+      const start = a >= 0 ? acc!.height - a : -1;
+      const rows = height - start;
+      if (a >= 0 && rows > 0) {
+        appendStrip(strip, start, rows);
+        idleFrames = 0;
+        desyncFrames = 0;
+        bottomNotified = false;
+        resumeAutoIfNeeded();
+      }
+    }
+    updateStatus();
+    return;
+  }
+  desyncFrames = 0;
+  if (newRows <= 0) {
+    // 探针贴着帧底 = 完美对齐但没有新内容
     idleFrames++;
     // 自动模式下连续多帧无新内容 = 到底：通知主进程停止注入（只发一次）
     if (mode === 'auto' && !bottomNotified && idleFrames >= AUTO_BOTTOM_IDLE_FRAMES) {
       bottomNotified = true;
+      autoStoppedByBottom = true;
       void window.api.scroll.action({ kind: 'bottom' }).catch(() => {});
     }
     updateStatus();
@@ -276,8 +355,16 @@ window.api.scroll.frame((frame: ScrollFramePayload) => {
   idleFrames = 0;
   bottomNotified = false;
   appendStrip(strip, appendStart, newRows);
+  resumeAutoIfNeeded();
   updateStatus();
 });
+
+/** 到底停注后再次出现新内容 → 自动恢复注入（懒加载长页会先误判到底） */
+function resumeAutoIfNeeded(): void {
+  if (mode !== 'auto' || !autoStoppedByBottom) return;
+  autoStoppedByBottom = false;
+  void window.api.scroll.action({ kind: 'auto' }).catch(() => {});
+}
 
 async function finish(kind: 'copy' | 'save' | 'edit'): Promise<void> {
   if (!acc || acc.height === 0) return;
