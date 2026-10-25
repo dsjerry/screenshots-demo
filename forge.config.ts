@@ -50,6 +50,10 @@ const config: ForgeConfig = {
   packagerConfig: {
     // Squirrel 安装包的 nuspec 必需 authors；exe 元数据里的产品名
     executableName: 'screenshots',
+    // macOS 悬停窗口探针（universal 二进制）——extraResource 直达
+    // Contents/Resources/window-probe，运行时经 process.resourcesPath 取用。
+    // 源码与构建脚本在 repo 的 resources/ 下，被 ignore 排除、不进 asar。
+    extraResource: ['./resources/window-probe'],
     // 原生 .node 不能从 asar 内加载 —— 必须解包到 app.asar.unpacked
     // （get-windows / koffi / Liquid Glass 的 N-API 二进制）
     asar: {
