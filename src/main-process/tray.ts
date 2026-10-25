@@ -3,12 +3,22 @@ import { Menu, Tray, nativeImage, app } from 'electron';
 import type { BrowserWindow, Rectangle } from 'electron';
 
 /**
- * 托盘图标：直接用应用图标 app.png（extraResource 随包分发，dev 走仓库
- * 路径），缩到 16px 并附 2x 表示供 hiDPI 托盘 / 菜单栏取用。
+ * 托盘图标：
+ * - macOS：菜单栏用**模板图标**（HIG 规范）—— 代码绘制的单色「取景框 +
+ *   中心点」字形（呼应应用标识），setTemplateImage 交由系统按菜单栏外观
+ *   （深/浅色、高亮）着色，无任何资源依赖；
+ * - 其他平台：任务栏惯例是彩色图标，直接用应用图标 app.png 缩放（extra-
+ *   Resource 随包分发，dev 走仓库路径），附 2x 表示供 hiDPI 取用。
  * 图标文件缺失 / 损坏时回退到代码绘制的位图（buildTrayImage）——
  * 空托盘图标等于看不见应用。
  */
 function trayIconImage(): Electron.NativeImage {
+  if (process.platform === 'darwin') {
+    const img = buildTemplateGlyph(1);
+    img.addRepresentation({ scaleFactor: 2, buffer: buildTemplateGlyph(2).toPNG() });
+    img.setTemplateImage(true);
+    return img;
+  }
   const p = app.isPackaged
     ? path.join(process.resourcesPath, 'app.png')
     : path.join(app.getAppPath(), 'resources', 'icons', 'app.png');
@@ -20,6 +30,47 @@ function trayIconImage(): Electron.NativeImage {
     buffer: source.resize({ width: 32, height: 32 }).toPNG(),
   });
   return img;
+}
+
+/**
+ * mac 模板字形：**相框 + 太阳 + 山形**（图片隐喻，macOS 照片风格），白像素
+ * + 透明底（模板图只取 alpha 通道，颜色由系统定）。具象剪影在 16px 下比
+ * 抽象线条可读得多。用 16 网格谓词绘制，scale=2 时按同一谓词输出 hiDPI。
+ */
+function buildTemplateGlyph(scale: 1 | 2): Electron.NativeImage {
+  const size = 16 * scale;
+  const buf = Buffer.alloc(size * size * 4);
+  const inside = (px: number, py: number): boolean => {
+    // 像素中心映射回 16 网格
+    const x = (px + 0.5) / scale;
+    const y = (py + 0.5) / scale;
+    const inOuter = x >= 1 && x < 15 && y >= 2 && y < 14;
+    const inInner = x >= 3 && x < 13 && y >= 4 && y < 12;
+    if (inOuter && !inInner) return true; // 相框（2px 描边）
+    if (!inInner) return false;
+    if (x >= 10 && x < 12 && y >= 5 && y < 7) return true; // 太阳
+    // 山形：两条斜边围成的三角形，底边贴内框下沿
+    if (y >= 5) {
+      const lx = 3 + (12 - y) * (5 / 7);
+      const rx = 8 + (y - 5) * (5 / 7);
+      if (x >= lx && x <= rx) return true;
+    }
+    return false;
+  };
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const i = (py * size + px) * 4;
+      if (inside(px, py)) {
+        buf[i] = 255;
+        buf[i + 1] = 255;
+        buf[i + 2] = 255;
+        buf[i + 3] = 255;
+      } else {
+        buf[i + 3] = 0;
+      }
+    }
+  }
+  return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }
 
 /**
