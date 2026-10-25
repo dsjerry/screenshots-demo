@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     />
     <title>截图工具</title>
     <link rel="stylesheet" href="/src/index.css" />
@@ -48,6 +48,14 @@
 
       <button id="start" type="button">开始截图</button>
       <p id="status" class="status" role="status"></p>
+
+      <section class="recent" id="recent" hidden>
+        <div class="recent-head">
+          <h2>最近截图</h2>
+          <button id="open-history" type="button">查看全部</button>
+        </div>
+        <div class="strip" id="recent-strip"></div>
+      </section>
 
       <section class="settings">
         <h2>设置</h2>

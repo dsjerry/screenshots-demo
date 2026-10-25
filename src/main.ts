@@ -80,7 +80,7 @@ function createMainWindow(): void {
 
   mainWindow = new BrowserWindow({
     width: 400,
-    height: 540,
+    height: 640,
     show: false,
     title: '截图工具',
     resizable: false,

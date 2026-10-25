@@ -45,6 +45,7 @@ const api: ScreenshotsApi = {
     boot: () => ipcRenderer.invoke(CH.historyBoot),
     thumb: (id) => ipcRenderer.invoke(CH.historyThumb, id),
     action: (payload) => ipcRenderer.invoke(CH.historyAction, payload),
+    open: () => ipcRenderer.invoke(CH.historyOpen),
   },
   settings: {
     get: () => ipcRenderer.invoke(CH.settingsGet),

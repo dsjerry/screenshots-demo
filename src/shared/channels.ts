@@ -54,10 +54,11 @@ export const CH = {
   settingsPickDir: 'settings:pickDir',
   /** 主 -> 遮罩：OCR 识别结果 */
   ocrResult: 'overlay:ocrResult',
-  /** 截图历史窗口 <-> 主 */
+  /** 截图历史 <-> 主；主窗口「查看全部」也走 open */
   historyBoot: 'history:boot',
   historyThumb: 'history:thumb',
   historyAction: 'history:action',
+  historyOpen: 'history:open',
 
   pinBoot: 'pin:boot',
   pinReady: 'pin:ready',

@@ -76,6 +76,8 @@ export interface ScreenshotsApi {
     thumb(id: number): Promise<string>;
     /** 复制 / 贴图 / 保存 / 删除 */
     action(payload: { kind: HistoryActionKind; id: number }): Promise<void>;
+    /** 打开（或聚焦）历史窗口（面板「查看全部」） */
+    open(): Promise<void>;
   };
   settings: {
     get(): Promise<AppSettings>;

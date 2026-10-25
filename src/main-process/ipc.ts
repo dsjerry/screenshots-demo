@@ -80,6 +80,7 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(CH.historyAction, (_event, payload: { kind: HistoryActionKind; id: number }) =>
     history.runAction(payload),
   );
+  ipcMain.handle(CH.historyOpen, () => history.openHistoryWindow());
 
   // -------------------------------------------------------- 保存目录
   ipcMain.handle(CH.settingsPickDir, async (event) => {

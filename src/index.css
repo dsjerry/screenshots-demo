@@ -115,6 +115,94 @@ h1 {
   color: var(--warn);
 }
 
+/* ------------------------------------------------------------- 最近截图 */
+
+.recent {
+  margin-top: 14px;
+}
+
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 2px 8px;
+}
+
+.recent-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--text-3);
+}
+
+#open-history {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+#open-history:hover {
+  background: var(--control);
+  color: var(--text);
+}
+
+.strip {
+  display: flex;
+  gap: 8px;
+}
+
+/* 点击整格 = 重钉；悬停浮出的「复制」角标做次操作 */
+.recent-thumb {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: repeating-conic-gradient(#2a2c31 0% 25%, #212328 0% 50%) 0 / 12px 12px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.recent-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.recent-thumb:hover {
+  border-color: var(--accent);
+}
+
+.recent-copy {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(24, 26, 30, 0.88);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.recent-thumb:hover .recent-copy {
+  opacity: 1;
+}
+
+.recent-copy:hover {
+  background: rgba(47, 111, 237, 0.9);
+  color: #fff;
+}
+
 /* ------------------------------------------------------------- 设置 */
 
 .settings {

@@ -112,6 +112,62 @@ historyRetentionSelect.addEventListener('change', () => {
     });
 });
 
+// ------------------------------------------------------------- 最近截图
+
+const recentSection = document.getElementById('recent') as HTMLDivElement;
+const recentStrip = document.getElementById('recent-strip') as HTMLDivElement;
+const openHistoryBtn = document.getElementById('open-history') as HTMLButtonElement;
+
+/** 面板里展示的最近条数 —— 更多浏览走「查看全部」的历史窗口 */
+const RECENT_COUNT = 4;
+
+/**
+ * 面板每次弹出（focus）都重拉一次：历史在会话外也会新增/淘汰。
+ * 点缩略图 = 重钉；悬停角标 = 复制。贴图的新窗口会夺走面板焦点，
+ * 面板按失焦约定自动收起 —— 动作已完成，收起是预期行为。
+ */
+async function refreshRecent(): Promise<void> {
+  const entries = await window.api.history.boot();
+  const recent = entries.slice(0, RECENT_COUNT);
+  recentSection.hidden = recent.length === 0;
+  recentStrip.replaceChildren(
+    ...recent.map((entry) => {
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'recent-thumb';
+      cell.title = '贴到桌面';
+      const img = document.createElement('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      void window.api.history.thumb(entry.id).then((url) => {
+        img.src = url;
+      });
+      cell.append(img);
+      const copy = document.createElement('span');
+      copy.className = 'recent-copy';
+      copy.textContent = '复制';
+      copy.title = '复制到剪贴板';
+      copy.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void window.api.history.action({ kind: 'copy', id: entry.id });
+      });
+      cell.append(copy);
+      cell.addEventListener('click', () => {
+        void window.api.history.action({ kind: 'pin', id: entry.id });
+      });
+      return cell;
+    }),
+  );
+}
+
+openHistoryBtn.addEventListener('click', () => {
+  void window.api.history.open();
+});
+window.addEventListener('focus', () => {
+  void refreshRecent();
+});
+void refreshRecent();
+
 glassStrengthInput.addEventListener('input', () => {
   updateGlassStrengthPreview(Number(glassStrengthInput.value));
 });
