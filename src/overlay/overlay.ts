@@ -387,8 +387,9 @@ function syncShortcutPanel(): void {
 
 function setupAnnotation(): void {
   // 两行式工具条（结构见 annotations/toolbar.ts），这里只注入动作组。
-  // 没有「确定」步骤：复制 / 保存就地合成即结束，钉住才是主操作；
-  // 动作顺序与业界一致 —— 保存类在前，取消（红）与确定（绿）收尾。
+  // ✓ 确认 = 复制到剪贴板并结束（微信 / QQ 截图「完成」的通行语义），是
+  // 本会话的「确定」；钉图降为普通动作与导出类并列。
+  // 收尾顺序按 macOS 对话框惯例：取消（红 ✕）在前、主操作（绿 ✓）居最右。
   const actions: ToolbarAction[] = [
     {
       id: 'copy',
@@ -396,6 +397,13 @@ function setupAnnotation(): void {
       run: () => {
         // 主进程推合成数据回来，本窗口就地拼图 → 回传 PNG → 剪贴板
         void window.api.overlay.action({ kind: 'copy' });
+      },
+    },
+    {
+      id: 'pin',
+      label: '钉住',
+      run: () => {
+        void window.api.overlay.action({ kind: 'pin' });
       },
     },
     {
@@ -431,11 +439,12 @@ function setupAnnotation(): void {
       },
     },
     {
-      id: 'pin',
-      label: '钉住',
+      id: 'confirm',
+      label: '确认',
       primary: true,
       run: () => {
-        void window.api.overlay.action({ kind: 'pin' });
+        // 与「复制」同一终点：合成 → 剪贴板 → 会话结束
+        void window.api.overlay.action({ kind: 'copy' });
       },
     },
   ];

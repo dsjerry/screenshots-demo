@@ -17,6 +17,7 @@ import trash2Svg from 'lucide-static/icons/trash-2.svg?raw';
 import copySvg from 'lucide-static/icons/copy.svg?raw';
 import saveSvg from 'lucide-static/icons/save.svg?raw';
 import xSvg from 'lucide-static/icons/x.svg?raw';
+import checkSvg from 'lucide-static/icons/check.svg?raw';
 import pinSvg from 'lucide-static/icons/pin.svg?raw';
 import galleryVerticalSvg from 'lucide-static/icons/gallery-vertical.svg?raw';
 import scanTextSvg from 'lucide-static/icons/scan-text.svg?raw';
@@ -61,6 +62,7 @@ const ACTION_ICONS: Record<string, string> = {
   ocr: scanTextSvg,
   scroll: galleryVerticalSvg,
   cancel: xSvg,
+  confirm: checkSvg,
   pin: pinSvg,
 };
 
@@ -151,7 +153,8 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
     btn.className = 'swatch';
     btn.style.background = c;
     btn.dataset.color = c;
-    btn.title = c;
+    btn.dataset.tip = c;
+    btn.setAttribute('aria-label', c);
     if (c === '#ffffff') btn.classList.add('is-light');
     btn.addEventListener('click', () => {
       editor.setColor(c);
@@ -237,7 +240,8 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
     const icon = ACTION_ICONS[spec.id];
     const btn = icon ? iconButton(icon, spec.label) : button(spec.label);
     btn.dataset.action = spec.id;
-    btn.title = spec.label;
+    // 图标按钮的提示由 iconButton 的 data-tip 负责；文字按钮自带文案，留原生 title
+    if (!icon) btn.title = spec.label;
     if (spec.danger) btn.classList.add('is-danger');
     if (spec.primary) btn.classList.add('is-primary');
     if (spec.active) btn.classList.add('is-active');
@@ -387,10 +391,11 @@ function button(text: string): HTMLButtonElement {
   return el;
 }
 
-/** 图标按钮：注入内联 SVG，原生 title 做悬停文案 */
-function iconButton(svg: string, title: string): HTMLButtonElement {
+/** 图标按钮：注入内联 SVG，名称走 data-tip（悬停即现）与 aria-label */
+function iconButton(svg: string, label: string): HTMLButtonElement {
   const el = button('');
   el.innerHTML = svg;
-  el.title = title;
+  el.dataset.tip = label;
+  el.setAttribute('aria-label', label);
   return el;
 }
