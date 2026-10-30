@@ -36,7 +36,7 @@
 
 - 📜 **滚动截长图**：手动滚轮或程序自动滚动（三档速度、到底自动停），行指纹探针拼接，窗口框架不影响
 - 🎬 **屏幕录制**：选区即录制区域，控制条计时、暂停 / 继续、随时停止；录制中可打开「标注」在画面上圈重点；导出 GIF（256 色中位切分量化，静止帧自动合并）
-- 🔤 **OCR 提取文字**：Windows 内置 WinRT 引擎，离线识别中文，会话内即时出结果
+- 🔤 **OCR 提取文字**：调用系统自带引擎（macOS Vision / Windows WinRT），离线识别中英文，会话内即时出结果
 
 **贴图（Pin）**
 
@@ -59,9 +59,10 @@
 | 滚动长图（自动滚动）   | ✅      | ❌            |
 | 屏幕录制（GIF 动图）   | ✅      | ⚠️ 未完整验证 |
 | 录制中实时标注         | ✅      | ❌            |
-| OCR 提取文字           | ✅      | ❌            |
+| OCR 提取文字           | ✅      | ✅            |
 
-- 自动滚动依赖 Win32 滚轮注入（user32）、OCR 依赖 Windows 内置 WinRT 引擎、录制中的实时标注依赖 `GetAsyncKeyState` 读鼠标按键 —— 三者均为 Windows 独占，欢迎 PR 补齐 macOS 实现；「⚠️」= 路径跨平台、但尚未完整验证。
+- OCR 两平台都走**系统自带引擎**：Windows 用 WinRT OCR（PowerShell），macOS 用 Vision 文字识别（osascript/JXA）—— 均离线、零体积。macOS 首次调用需加载模型，可能比之后慢（之后约 0.2~0.6s）。
+- 自动滚动依赖 Win32 滚轮注入（user32）、录制中的实时标注依赖 `GetAsyncKeyState` 读鼠标按键 —— 这两项为 Windows 独占，欢迎 PR 补齐 macOS 实现；「⚠️」= 路径跨平台、但尚未完整验证。
 - macOS 支持较新，遇到问题欢迎提 [Issue](https://github.com/dsjerry/screenshots-demo/issues)。macOS 为纯菜单栏应用：无 Dock 图标、Cmd+Tab 不可见，入口是菜单栏托盘。
 
 ## 📦 下载使用
@@ -111,7 +112,7 @@ npm start
 | 贴图     | 钉住生成置顶贴图；滚轮缩放、`Ctrl/Cmd+滚轮` 透明度、双击复制、`✎` 标注、`Esc` 关闭                 |
 | 长图     | 「长图」按钮（选区在单屏内）→ 手动滚轮 / 自动滚动（仅 Windows）→ `编辑` `复制` `保存`              |
 | 录制     | 「录制」按钮（选区在单屏内）→ 控制条计时 / `暂停` / `标注` / `停止` → `复制` `保存` 导出帧序列     |
-| OCR      | 「提取文字」按钮 → 右上角结果面板 → 一键复制（仅 Windows）                                         |
+| OCR      | 「提取文字」按钮 → 右上角结果面板 → 一键复制                                                       |
 | 历史     | 托盘「截图历史」→ 缩略图列表 → 复制 / 贴图 / 保存 / 删除                                           |
 
 > 更多细节（多屏同步原理、标注引擎、IPC 设计）见 [docs/architecture.md](docs/architecture.md)。
@@ -120,7 +121,7 @@ npm start
 
 - **Electron 44 + TypeScript + Vite（Forge 插件）**，UI 无框架、零运行时依赖
 - 每块显示器一个遮罩窗口（规避混合 DPI 语义问题），标注引擎（`src/annotations/`）在遮罩 / 贴图 / 长图间复用
-- 原生能力：窗口枚举用 [get-windows](https://github.com/sindresorhus/get-windows)、自动滚动注入用 [koffi](https://github.com/koromix/koffi)、OCR 用系统 WinRT —— 全部 N-API 预编译，无需本地编译环境
+- 原生能力：窗口枚举用 [get-windows](https://github.com/sindresorhus/get-windows)、自动滚动注入用 [koffi](https://github.com/koromix/koffi)、OCR 用系统 WinRT / Vision —— 全部 N-API 预编译，无需本地编译环境
 
 ```
 src/
