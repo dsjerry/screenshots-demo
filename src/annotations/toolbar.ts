@@ -21,6 +21,7 @@ import checkSvg from 'lucide-static/icons/check.svg?raw';
 import pinSvg from 'lucide-static/icons/pin.svg?raw';
 import galleryVerticalSvg from 'lucide-static/icons/gallery-vertical.svg?raw';
 import scanTextSvg from 'lucide-static/icons/scan-text.svg?raw';
+import videoSvg from 'lucide-static/icons/video.svg?raw';
 import squareDashedSvg from 'lucide-static/icons/square-dashed.svg?raw';
 import brushSvg from 'lucide-static/icons/brush.svg?raw';
 import slashSvg from 'lucide-static/icons/slash.svg?raw';
@@ -61,6 +62,7 @@ const ACTION_ICONS: Record<string, string> = {
   save: saveSvg,
   ocr: scanTextSvg,
   scroll: galleryVerticalSvg,
+  record: videoSvg,
   cancel: xSvg,
   confirm: checkSvg,
   pin: pinSvg,
@@ -117,6 +119,21 @@ export interface ToolbarAction {
 export interface ToolbarOptions {
   /** 宿主动作：只有遮罩在用（钉住 / 复制 / 保存 / 取消） */
   actions?: ToolbarAction[];
+  /**
+   * 工具行展示的子集；缺省 = 编辑器支持的全部。
+   * 录制工具条用它剔除在标注层没有意义的三件：手型（无窗口可拖，
+   * Editor 的 hand 语义靠遮罩拦截器实现，落到别处会画椭圆）、
+   * 文字（窗口收不到键盘焦点，输入框打不了字）、
+   * 马赛克（取样源是底图，透明标注层上预览不可见）。
+   */
+  tools?: ToolId[];
+}
+
+/** 宿主可能要事后操纵的按钮（录制工具条用它把「永远禁用」解开 —— 撤销 / 重做作用在别的窗口）。 */
+export interface ToolbarHandles {
+  undo: HTMLButtonElement;
+  redo: HTMLButtonElement;
+  clear: HTMLButtonElement;
 }
 
 /**
@@ -132,11 +149,11 @@ export interface ToolbarOptions {
  * 快捷键：`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` / `Delete` 恒定生效；
  * `Ctrl+C`、`Esc` 按宿主是否提供对应动作决定。
  */
-export function createToolbar(container: HTMLElement, editor: Editor, opts: ToolbarOptions = {}): void {
+export function createToolbar(container: HTMLElement, editor: Editor, opts: ToolbarOptions = {}): ToolbarHandles {
   container.replaceChildren();
 
   const tools = group();
-  for (const id of editor.toolIds) {
+  for (const id of opts.tools ?? editor.toolIds) {
     const btn = iconButton(TOOL_ICONS[id], TOOL_LABELS[id]);
     btn.dataset.tool = id;
     btn.classList.toggle('is-active', id === editor.currentTool);
@@ -361,6 +378,8 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
       }
     }
   });
+
+  return { undo, redo, clear };
 }
 
 function group(): HTMLDivElement {

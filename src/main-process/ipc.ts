@@ -2,6 +2,10 @@ import { BrowserWindow, dialog, ipcMain, screen } from 'electron';
 import { CH } from '../shared/channels';
 import type {
   AppSettings,
+  RecordActionPayload,
+  RecordBrushPayload,
+  RecordClickPayload,
+  RecordExportPayload,
   HistoryActionKind,
   OverlayActionKind,
   OverlayInput,
@@ -34,6 +38,15 @@ import {
   setSnipHooks,
 } from './snip-session';
 import { copyPng, copyText, defaultSnipName, savePng, takePendingImageBoot } from './pin-window';
+import {
+  onRecordAction,
+  onRecordClick,
+  onRecordExport,
+  onRecordBrush,
+  onRecordInk,
+  onRecordShapes,
+  takeTimeline,
+} from './record-capture';
 
 export interface AppContext {
   isMainWindow(win: BrowserWindow): boolean;
@@ -105,6 +118,9 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(CH.overlayAction, (event, payload: { kind: OverlayActionKind }) =>
     onOverlayAction(event.sender, payload.kind),
   );
+  // 遮罩工具条「录制」：与 overlay:action 同一入口，单独开一条是为了让
+  // 覆盖层窗口（非遮罩）也能明确表达意图，不必复用 action 的语义
+  ipcMain.handle(CH.overlayRecord, (event) => onOverlayAction(event.sender, 'record'));
   ipcMain.handle(CH.overlayShapes, (event, payload: { shapes: Shape[] }) =>
     onOverlayShapes(event.sender, payload.shapes),
   );
@@ -148,6 +164,20 @@ export function registerIpc(ctx: AppContext): void {
       // 会话拼接优先；否则看是否为历史图片 / 长图创建的独立贴图
       onPinBoot(event.sender) ?? takePendingImageBoot(event.sender),
   );
+
+  // -------------------------------------------------------- 录屏 / GIF
+  // 控制条与标注层共用同一份 record.html：动作按 webContents.id 校验归属，
+  // 非控制条的窗口（覆盖层）发来的动作一律拒绝
+  ipcMain.handle(CH.recordAction, (event, payload: RecordActionPayload) => onRecordAction(event.sender.id, payload));
+  ipcMain.handle(CH.recordInk, (event, payload: { active: boolean }) => onRecordInk(event.sender.id, payload.active));
+  // 控制条改笔刷：主进程只转发给标注层，不做解释
+  ipcMain.handle(CH.recordBrushSet, (_event, payload: RecordBrushPayload) => onRecordBrush(payload));
+  ipcMain.handle(CH.recordShapes, (event, payload: { shapes: Shape[] }) =>
+    onRecordShapes(event.sender.id, payload.shapes),
+  );
+  ipcMain.handle(CH.recordClick, (event, payload: RecordClickPayload) => onRecordClick(event.sender.id, payload));
+  ipcMain.handle(CH.recordTimeline, (event) => takeTimeline(event.sender.id));
+  ipcMain.handle(CH.recordExport, (_event, payload: RecordExportPayload) => onRecordExport(payload));
 
   // -------------------------------------------------------- 滚动截长图
   ipcMain.handle(CH.scrollAction, (event, payload: ScrollActionPayload) => onScrollAction(event.sender, payload));

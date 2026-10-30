@@ -13,6 +13,7 @@ import {
 } from './scroll-capture';
 // pin-window 惰性引用本文件的依赖（history ↔ pin-window），此处静态导入安全
 import { createPinWindow, loadPin, copyPng, defaultSnipName, savePng, createPinFromImage } from './pin-window';
+import { isRecording, startRecording, cancelRecording } from './record-capture';
 import { getSettings } from './settings';
 import { ensureScreenCaptureAccess } from './screen-permission';
 import { frontAppName, probeWindows } from './window-probe';
@@ -782,6 +783,10 @@ export function onOverlayAction(sender: WebContents, kind: OverlayActionKind): v
     startScroll(s);
     return;
   }
+  if (kind === 'record') {
+    startRecord(s);
+    return;
+  }
   if (kind === 'ocr') {
     startOcr(s, sender);
     return;
@@ -853,6 +858,51 @@ function startScroll(s: Session): void {
   if (!startScrollCapture(pick.shot, pick.region)) {
     console.warn('[scroll] 启动失败（可能已在滚动中）');
   }
+}
+
+/** 目标帧率（与 record-capture 的 FPS 保持一致，控制条据此算每帧时长） */
+const RECORD_FPS = 10;
+
+/**
+ * 进入录制：与长图同款取舍 —— 只录**单屏内**的选区（跨屏录制时帧尺寸会随
+ * 光标移动跳变，且控制条没有自然的摆放位置），取与各屏的最大交集。
+ *
+ * 遮罩收起后由录制控制条接管；失败则恢复遮罩，用户还能继续截图。
+ */
+function startRecord(s: Session): void {
+  const sel = s.selection;
+  if (!hasRealSelection(sel)) return;
+  const pick = bestRegionOnDisplay(s.shots, sel);
+  if (!pick) {
+    console.warn('[record] 选区无法落在单块屏内，录制未启动');
+    return;
+  }
+  if (isRecording()) {
+    console.warn('[record] 已在录制中');
+    return;
+  }
+  stopPoll(s);
+  stopHoverPoll(s);
+  hideOverlays();
+  s.phase = 'recording';
+  const ok = startRecording({
+    shot: pick.shot,
+    region: pick.region,
+    format: 'png-sequence',
+    sourceApp: s.sourceApp,
+    // 控制条被系统关掉（Alt+F4）：恢复被隐藏的窗口，别让应用「消失」
+    onClosed: () => {
+      if (session === s) cancelSnip('record-closed');
+      else restoreWindows(() => false);
+    },
+  });
+  if (!ok) {
+    console.warn('[record] 启动失败，回到框选');
+    s.phase = 'adjusting';
+    void beginSnip();
+    return;
+  }
+  console.log(`[record] fps=${RECORD_FPS} region=${Math.round(pick.region.width)}x${Math.round(pick.region.height)}`);
 }
 
 /** 选区与各屏求最大交集（最大化窗口的隐形边框自然被裁回屏内）。 */
@@ -1320,6 +1370,8 @@ export function cancelSnip(reason = 'manual'): void {
     stopPoll(s);
     stopHoverPoll(s);
     stopScrollCapture();
+    // 录制期间 Esc / 重启截图 / 显示器变化都要把控制条一起收掉
+    if (isRecording()) cancelRecording();
     for (const win of s.overlays) {
       if (win.isDestroyed()) continue;
       // teardown 让渲染进程丢掉全屏位图（窗口留着复用，不该一直占着显存）

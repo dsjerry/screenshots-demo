@@ -5,6 +5,7 @@ import { CH } from './shared/channels';
 import { registerIpc } from './main-process/ipc';
 import { forwardRendererLogs } from './main-process/renderer-log';
 import { beginSnip, cancelSnip } from './main-process/snip-session';
+import { cancelRecording } from './main-process/record-capture';
 import { createTray, destroyTray, getTrayBounds } from './main-process/tray';
 import { hideHudCatchers, setHudDismissCallback, showHudCatchers } from './main-process/hud-catcher';
 import { getSettings } from './main-process/settings';
@@ -409,6 +410,8 @@ app.on('before-quit', () => {
   isQuitting = true;
   // 先于窗口关闭阶段销毁：盾的 close 事件带 preventDefault，会卡住 quit
   hideHudCatchers();
+  // 录制中途退出：控制条与标注层都是置顶窗，留着会变成关不掉的黑框
+  cancelRecording();
 });
 
 app.on('will-quit', () => {

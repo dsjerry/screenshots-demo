@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*"
+    />
+    <title>record</title>
+    <link rel="stylesheet" href="/src/record/record.css" />
+  </head>
+  <body>
+    <!-- 录制区域上的实时标注层：与录制窗口同形的透明覆盖窗（见 record.ts），
+         这里只是它的 DOM 宿主，位置与尺寸由主进程经 setBounds 对齐 -->
+    <canvas id="ink" hidden></canvas>
+    <textarea id="text-editor" class="text-editor" hidden></textarea>
+
+    <div class="bar">
+      <div class="status">
+        <span id="time">00:00</span>
+        <span id="hint">录制中</span>
+      </div>
+      <div class="actions">
+        <button id="pause" type="button" title="暂停 / 继续（Ctrl+Shift+P）">暂停</button>
+        <button id="zoom" type="button" title="录制期间画标注">标注</button>
+        <button id="stop" type="button" class="primary" title="停止并导出">停止</button>
+        <button id="cancel" type="button" class="danger" title="取消（Esc）">取消</button>
+      </div>
+    </div>
+
+    <div id="result" class="result" hidden>
+      <div class="result-head">
+        <span id="result-title">录制完成</span>
+        <span id="result-info"></span>
+      </div>
+      <div class="result-actions">
+        <select id="format" title="输出格式">
+          <option value="gif">GIF 动图</option>
+          <option value="mp4" disabled>MP4（尚未接入）</option>
+          <option value="png-sequence">PNG 序列</option>
+        </select>
+        <button id="copy" type="button">复制</button>
+        <button id="save" type="button">保存</button>
+        <button id="close" type="button" class="danger">关闭</button>
+      </div>
+    </div>
+
+    <div id="toolbar" class="toolbar" hidden></div>
+    <script type="module" src="/src/record/record.ts"></script>
+  </body>
+</html>

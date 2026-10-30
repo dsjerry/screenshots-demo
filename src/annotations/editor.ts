@@ -113,6 +113,11 @@ export class Editor {
   private capturedPointer: number | null = null;
 
   onToolChange?: (tool: ToolId) => void;
+  /**
+   * 工具属性（颜色 / 线宽 / 箭头头部 / 字号 / 马赛克模式）变化。录制控制条用：
+   * 它的工具条挂在另一块屏的窗口里，属性变了要下发给标注层。
+   */
+  onAttrsChange?: () => void;
   /** 每次撤销 / 重做 / 新增 / 删除 / 清空 / 改色 / 落盘调整后触发 */
   onHistoryChange?: () => void;
   /**
@@ -361,6 +366,7 @@ export class Editor {
         console.log(`[editor] 改色 index=${idx} color=${color}`);
       }
     }
+    this.onAttrsChange?.();
     this.render();
   }
 
@@ -379,6 +385,7 @@ export class Editor {
         console.log(`[editor] 换箭头头部 index=${idx} head=${head}`);
       }
     }
+    this.onAttrsChange?.();
     this.render();
   }
 
@@ -397,6 +404,7 @@ export class Editor {
         console.log(`[editor] 改字号 index=${idx} size=${size}`);
       }
     }
+    this.onAttrsChange?.();
     this.render();
   }
 
@@ -404,11 +412,13 @@ export class Editor {
   setMosaicMode(mode: MosaicMode): void {
     if (this.mosaicMode === mode) return;
     this.mosaicMode = mode;
+    this.onAttrsChange?.();
     this.render();
   }
 
   setWidth(width: number): void {
     this.width = width;
+    this.onAttrsChange?.();
     this.render();
   }
 

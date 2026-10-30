@@ -117,6 +117,10 @@ const config: ForgeConfig = {
           name: 'history',
           config: 'vite.history.config.ts',
         },
+        {
+          name: 'record',
+          config: 'vite.record.config.ts',
+        },
       ],
     }),
     new FusesPlugin({

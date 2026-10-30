@@ -49,8 +49,9 @@ export interface OverlayInitPayload {
  *   `Enter` / 双击 = 复制，点「钉住」才进 `confirming`
  * - `confirming`：已确认钉住，等钉图就绪
  * - `scrolling`：滚动截长图 —— 遮罩已收起，由滚动截图专用窗口接管
+ * - `recording`：录屏 —— 遮罩已收起，由录制控制条接管
  */
-export type SnipPhase = 'selecting' | 'adjusting' | 'confirming' | 'scrolling';
+export type SnipPhase = 'selecting' | 'adjusting' | 'confirming' | 'scrolling' | 'recording';
 
 export interface OverlaySelectionPayload {
   /** 虚拟屏 DIP；null 表示尚未产生选区 */
@@ -77,9 +78,10 @@ export interface OverlaySelectionPayload {
  * - `pin`   进钉图窗口（本工具区别于主流的地方，标注原样带过去）
  * - `copy` / `save` 就地合成整图 → 剪贴板 / 存盘 → 结束截图
  * - `scroll` 进入滚动截长图（遮罩收起，由专用窗口接管）
+ * - `record` 进入录屏（遮罩收起，由录制控制条接管）
  * - `cancel` 取消
  */
-export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'scroll' | 'ocr';
+export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'scroll' | 'ocr' | 'record';
 
 /** 遮罩就地合成导出所需的数据（主进程推给宿主遮罩）。 */
 export interface OverlayComposePayload {
@@ -284,3 +286,137 @@ export type Shape =
     ))
   | { type: 'counter'; x: number; y: number; n: number; color: string }
   | { type: 'text'; x: number; y: number; text: string; color: string; size: number };
+
+// ------------------------------------------------------------------ 录屏 / GIF
+
+/**
+ * 录制产物格式。
+ *
+ * - `gif`：离线自编码（`shared/gif.ts` + `record/quantize.ts`），聊天 / 文档里
+ *   能直接预览；只有 256 色，体积大
+ * - `mp4`：计划走系统编码器（mac AVAssetWriter / Windows Media Foundation），
+ *   **尚未接入**，下拉里置灰
+ * - `png-sequence`：逐帧 PNG 落到自己新建的子目录，无损、零编码器依赖，
+ *   是无 GIF 可用的兜底产物
+ */
+export type RecordFormat = 'gif' | 'mp4' | 'png-sequence';
+
+/** 录制控制条的阶段：录制中 / 已暂停 / 已停止待导出 */
+export type RecordPhase = 'recording' | 'paused' | 'stopped';
+
+/** 主进程推给控制条的录制状态（帧数、时长、产物尺寸）。 */
+export interface RecordStatusPayload {
+  phase: RecordPhase;
+  /** 已采集并编码的帧数 */
+  frames: number;
+  /** 从开始录制到现在的墙钟时长（暂停不计），毫秒 */
+  elapsed: number;
+  /** 最近一帧的像素尺寸 */
+  width: number;
+  height: number;
+  /** 录制区域（虚拟屏 DIP），控制条据此摆放与标注坐标换算 */
+  region: Rect;
+  format: RecordFormat;
+}
+
+/** 录制中叠加的标注快照（标注层渲染进程回传，主进程按收到时刻记进时间轴）。 */
+export interface RecordShapesPayload {
+  shapes: Shape[];
+}
+
+/** 一份标注快照及其生效时刻（相对录制起点毫秒，单调递增）。 */
+export interface RecordShapeSnapshot {
+  shapes: Shape[];
+  at: number;
+}
+
+/** 录制中光标位置的涟漪（点击可视化）：虚拟屏 DIP。 */
+export interface RecordClickPayload {
+  point: Point;
+  /** 落点时间（录制起点为 0 的相对毫秒），导出时据此决定在哪些帧上画 */
+  at: number;
+}
+
+/** 控制条动作：开始 / 暂停 / 继续 / 停止 / 取消 / 导出（复制 / 保存）。 */
+export type RecordActionPayload =
+  | { kind: 'pause' }
+  | { kind: 'resume' }
+  | { kind: 'stop' }
+  | { kind: 'cancel' }
+  | { kind: 'copy' }
+  | { kind: 'save' }
+  | { kind: 'format'; format: RecordFormat };
+
+export interface RecordActionResult {
+  ok: boolean;
+  /** 失败原因；用户取消保存对话框时是「已取消」，控制条据此提示而不报错 */
+  error?: string;
+  /** 落盘后的**绝对路径**（单文件是文件、png-sequence 是目录） */
+  path?: string;
+  /** 用户主动取消（不是失败） */
+  canceled?: boolean;
+}
+
+/** 主 -> 录制控制条：一帧录制画面（按选区裁好的 RGBA，尺寸恒定） */
+export interface RecordFramePayload {
+  pixels: Uint8Array;
+  width: number;
+  height: number;
+  /** 抓帧时刻（相对录制起点毫秒，主进程时钟）—— 编码时据此对齐标注快照 */
+  at: number;
+}
+
+/**
+ * 录制时间轴：编码前由控制条向主进程一次性取走（标注快照 / 点击涟漪 / 选区）。
+ * 所有时刻都是主进程的「相对录制起点毫秒」，与 `RecordFramePayload.at` 同一时钟，
+ * 暂停期间双方一起冻结 —— 控制条不要拿自己的 performance.now() 去对齐。
+ */
+export interface RecordTimelinePayload {
+  /** 标注快照序列（每次历史变化一条，`at` 递增）；shapes 为录制区域 DIP 坐标 */
+  snapshots: RecordShapeSnapshot[];
+  /** 点击涟漪：录制区域 DIP 坐标 + 相对录制起点毫秒 */
+  clicks: { point: Point; at: number }[];
+  /** 录制区域（虚拟屏 DIP），控制条据此把 DIP 标注换算到帧的物理像素 */
+  region: Rect;
+  /** 目标帧率（帧间隔 = 1000 / fps 毫秒），编码时按它给每帧算显示时长 */
+  fps: number;
+  sourceApp?: string;
+}
+
+/**
+ * 录制控制条 -> 主：导出结果。
+ *
+ * 两条路径都由主进程负责落盘与剪贴板，控制条只管编码：
+ * - `copy`：单文件成品（gif / mp4）直接进剪贴板；`png-sequence` 没有单文件
+ *   形态，复制不了图像，只能**保存**后把路径放剪贴板（见主进程说明）；
+ * - `save`：走系统保存对话框，默认落在设置的 `saveDir`。
+ */
+export interface RecordExportPayload {
+  kind: 'copy' | 'save';
+  format: RecordFormat;
+  /** gif / mp4 成品字节 */
+  data?: Uint8Array;
+  /** png-sequence：逐帧 PNG */
+  files?: Uint8Array[];
+}
+
+/** 标注层压笔 / 移动 / 抬笔（由主进程转发的全局光标驱动，坐标是本窗口 CSS px）。 */
+export interface RecordInkInputPayload {
+  kind: 'down' | 'move' | 'up';
+  point: Point;
+}
+
+/**
+ * 控制条（或工具条窗口）下发给标注层的笔刷状态与编辑命令。
+ * 主进程原样转发给标注层窗口，不解释内容。
+ */
+export interface RecordBrushPayload {
+  tool?: ToolId;
+  color?: string;
+  width?: number;
+  arrowHead?: ArrowHead;
+  fontSize?: number;
+  mosaicMode?: MosaicMode;
+  /** 历史操作遥控：标注层的编辑器执行（工具条窗口与标注层不在同一进程） */
+  cmd?: 'undo' | 'redo' | 'clear' | 'delete';
+}

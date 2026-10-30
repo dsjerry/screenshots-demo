@@ -42,6 +42,32 @@ export const CH = {
   /** 文字输入框开合 —— 打字时主进程别把 Enter/Esc 吃掉 */
   overlayEditState: 'overlay:editState',
 
+  /** 遮罩工具条「录制」：进录制模式（收起遮罩、起控制条） */
+  overlayRecord: 'overlay:record',
+
+  /** 主 -> 录制控制条：一帧录制画面（按选区裁好的 RGBA） */
+  recordFrame: 'record:frame',
+  /** 主 -> 录制控制条：状态推进（帧数 / 时长 / 阶段） */
+  recordStatus: 'record:status',
+  /** 录制控制条 -> 主：导出时回传成品字节（gif / mp4）或帧文件 */
+  recordExport: 'record:export',
+  /** 录制控制条 -> 主：控制条自身的动作（暂停 / 继续 / 停止 / 取消 / 导出 / 换格式） */
+  recordAction: 'record:action',
+  /** 控制条 -> 主：标注层是否接管指针。主进程处理后把同一 payload 回发给标注层窗口（切换指针事件） */
+  recordInk: 'record:ink',
+  /** 主 -> 标注层：压笔 / 移动 / 抬笔（主进程轮询全局光标后下发） */
+  recordInkInput: 'record:inkInput',
+  /** 主 -> 标注层：控制条下发的笔刷（工具 / 颜色 / 线宽） */
+  recordBrush: 'record:brush',
+  /** 录制控制条 -> 主：笔刷变化（主进程只做转发，不解释） */
+  recordBrushSet: 'record:brushSet',
+  /** 录制控制条 -> 主：录制期间叠加的标注（虚拟屏 DIP，主进程按时刻记进时间轴） */
+  recordShapes: 'record:shapes',
+  /** 录制控制条 -> 主：点击涟漪（操作可视化），导出时按时间画在帧上 */
+  recordClick: 'record:click',
+  /** 录制控制条 -> 主：编码前一次性取走时间轴（标注快照 / 点击涟漪 / 区域） */
+  recordTimeline: 'record:timeline',
+
   /** 主 -> 控制条：滚动截长图的裁剪帧（选区条带 RGBA） */
   scrollFrame: 'scroll:frame',
   /** 控制条 -> 主：复制 / 保存（随带长图 PNG）/ 取消 */

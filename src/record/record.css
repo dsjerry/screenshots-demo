@@ -1,0 +1,267 @@
+/* 录制控制条：与长图控制条同一套磨砂玻璃语言（半透明 + 圆角 + 小投影）。
+   窗口本体比可视区大 8px（body padding），给圆角与投影留呼吸空间；
+   整条是系统拖拽区，按钮显式退出（见 .actions button）。 */
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  padding: 8px;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 100%;
+  padding: 0 12px;
+  /* 半透明底直接透出背后的录制画面；这里同样不能用 backdrop-filter ——
+     Windows 上它会把透明窗口的合成面变成不透明 */
+  background: rgba(18, 20, 24, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  color: #d7dade;
+  font-size: 12px;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* 计时器用等宽数字，避免每秒刷时长时数字宽度跳动 */
+#time {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+#hint {
+  font-size: 11px;
+  color: rgba(215, 218, 222, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 录制中的红点：纯视觉，不参与点击 */
+.status.is-recording #hint::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #ff3b30;
+  vertical-align: middle;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.actions button,
+.result-actions button,
+.result-actions select {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7dade;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.actions button:hover,
+.result-actions button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.actions button.is-on {
+  background: #2f6fed;
+  border-color: #5b8df5;
+  color: #ffffff;
+}
+
+.actions button.primary {
+  background: rgba(47, 111, 237, 0.9);
+  color: #ffffff;
+}
+
+.actions button.danger:hover,
+.result-actions button.danger:hover {
+  background: rgba(255, 59, 48, 0.85);
+  color: #ffffff;
+}
+
+/* ---------------- 停止后的导出面板 ----------------
+   录制结束后控制条原地切换成这个面板（录像已冻结在内存里）。 */
+.result {
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(18, 20, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  color: #d7dade;
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.result[hidden] {
+  display: none;
+}
+
+.result-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+#result-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+#result-info {
+  font-size: 11px;
+  color: rgba(215, 218, 222, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.result-actions select {
+  /* 下拉要和按钮一样高，否则整行不在一条基线上 */
+  height: 26px;
+  padding: 0 4px;
+}
+
+/* ---------------- 录制期间的工具条 ----------------
+   复用 annotations.css 的按钮外观，但容器不再是遮罩里的浮动条：
+   工具条窗口是一块贴着控制条上方的透明小窗（见 record-capture.ts 的
+   ensureToolbarWindow），内容从左上角排开，窗口尺寸就是按这份内容定的。 */
+.toolbar {
+  position: fixed;
+  left: 8px;
+  top: 8px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: calc(100vw - 16px);
+}
+
+.toolbar[hidden] {
+  display: none;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(24, 26, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.toolbar-row[hidden] {
+  display: none;
+}
+
+/* 工具条窗口比遮罩的工具条窄（544px）：按钮收紧一档，行 1 才放得下 11 颗。
+   annotations.css 在本页之前加载，同权重规则这里赢。 */
+.toolbar button {
+  min-width: 30px;
+  padding: 0 5px;
+}
+
+/* 文字输入框：定位与尺寸由 record.ts 按点击点算，这里只管外观 */
+.text-editor {
+  position: fixed;
+  z-index: 22;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px dashed rgba(47, 111, 237, 0.9);
+  border-radius: 3px;
+  background: transparent;
+  color: #ffffff;
+  font-family: inherit;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.text-editor[hidden] {
+  display: none;
+}
+
+/* 录制区域的标注层：整窗透明、只画标注，指针事件穿透（不吃用户的点击） */
+#ink {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#ink[hidden] {
+  display: none;
+}

@@ -454,6 +454,14 @@ function setupAnnotation(): void {
       },
     },
     {
+      id: 'record',
+      label: '录制',
+      run: () => {
+        // 收起遮罩、起录制控制条；选区需落在单屏内（主进程校验）
+        void window.api.overlay.record();
+      },
+    },
+    {
       id: 'cancel',
       label: '取消',
       danger: true,
