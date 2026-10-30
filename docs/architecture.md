@@ -162,3 +162,62 @@ stateDiagram-v2
 - **渲染 → 主**（`invoke`）：`overlay:boot`、`overlay:ready`、`overlay:input`、`overlay:tool`、`overlay:action`、`overlay:shapes`、`overlay:draft`、`overlay:inFlight`、`overlay:editState`、`overlay:focus`、`overlay:copyText`、`overlay:export`、`pin:boot`、`pin:ready`、`pin:action`、`app:startSnip`
 
 共 22 个通道（16 个 `invoke` + 6 个 `send`），全部定义在 `src/shared/channels.ts` —— 任何地方都不允许写字符串字面量。
+
+## 屏幕录制
+
+与长图同一取舍：**只录单屏内**的选区（跨屏录制时帧尺寸会随光标移动跳变，控制条也没有自然的摆放位置）。
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant M as 主进程 record-capture
+    participant B as 控制条（record.html#bar）
+    participant I as 标注层（record.html#ink）
+
+    U->>M: 遮罩工具条「录制」
+    M->>M: 收起遮罩，取选区与所在屏的最大交集
+    M->>B: 创建控制条（置顶 + contentProtection）
+    M->>I: 创建标注层（与录制区域同形、整窗穿透）
+    loop 每 100ms
+        M->>M: captureDisplays → cropShot 裁出选区
+        M->>B: send record:frame（RGBA）
+    end
+    B->>B: 收进帧队列（上限 600 帧，超出丢旧帧）
+    Note over M,I: 录制中标注 — 控制条下发笔刷（record:brush），主进程轮询全局光标<br/>+ GetAsyncKeyState 判按压，把 down/move/up 发给标注层；标注层只画不上屏
+    I->>M: send record:shapes（本窗口 DIP 的标注快照）
+    U->>B: 停止
+    B->>B: 逐帧画进离屏画布 + 叠加标注 → PNG
+    B->>M: invoke record:export（帧数组）
+    M->>M: 写临时目录 + frames.json（fps / 尺寸），复制路径 / 打开目录
+```
+
+三条不变量：
+
+- **控制条与标注层永不进画面**：两者都 `setContentProtection(true)`，这也是控件能与录制区域重叠的前提。
+- **标注层整窗鼠标穿透**：它盖着录制区域，收指针就等于把用户的操作全挡住；绘制靠主进程转发的全局光标驱动。
+- **encode 在渲染进程**：主进程是所有窗口的事件循环所在，一帧 PNG 编码卡住会让遮罩、托盘、录制一起停顿。
+
+### 产物落点
+
+与截图同一套约定，**不落临时目录**：
+
+| 动作              | 位置                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 保存（帧序列）    | 弹「选择文件夹」（默认 `settings.saveDir`）→ 在里面新建 `record_YYYY-MM-DD_HH-mm-ss/`，写入 `frame-0000.png …` + `frames.json` |
+| 保存（gif / mp4） | 弹「另存为」，默认 `settings.saveDir/record_…gif`                                                                              |
+| 复制（gif / mp4） | 图片进剪贴板（`ClipboardItem` + `image/gif`），同时落一份到 `saveDir` 并把路径写进剪贴板                                       |
+| 复制（帧序列）    | 多文件没有单张图像形态：退化为「保存到 `saveDir` + 路径进剪贴板」，控制条如实提示                                              |
+
+对话框弹出前控制条会临时降级 `alwaysOnTop`，否则 screen-saver 层级的控制条会把对话框盖住。
+
+### GIF 编码
+
+产物支持 **GIF**（默认）与 **PNG 帧序列**；MP4 尚未接入（下拉里置灰）。
+
+编码全在控制条渲染进程里完成，三步：
+
+1. 每帧叠上「那一刻已生效的标注」画进离屏画布 → 取 RGBA；
+2. `src/record/quantize.ts` 用**中位切分**把全片压到 256 色，全片共用一张全局色表（每帧换盘会让静态区域轻微闪色）；
+3. `dedupeFrames` 合并连续相同帧（静止画面只累加显示时长），再交给 `src/shared/gif.ts` 做 LZW + 容器封装。
+
+`src/shared/gif-decode.ts` 是配套的参考解码器，只用于自测对拍。
