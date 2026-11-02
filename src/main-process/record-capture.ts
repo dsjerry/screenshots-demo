@@ -133,6 +133,9 @@ export function startRecording(opts: RecordSessionOptions): boolean {
     // 透明窗口别设 backgroundColor：某些版本会垫一层不透明合成面
     transparent: true,
     fullscreenable: false,
+    // 遮罩同款不变量（AGENTS.md）：不开这个，AppKit 会在窗口首次上屏时把它
+    // 钳进工作区 —— 选区贴着屏顶时控制条被压下去，工具条按 barRect 摆就会错位
+    enableLargerThanScreen: true,
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -252,8 +255,10 @@ function elapsedMs(s: RecorderState): number {
 }
 
 function pushStatus(s: RecorderState): void {
-  if (s.bar.isDestroyed()) return;
-  s.bar.webContents.send(CH.recordStatus, statusPayload(s));
+  if (!s.bar.isDestroyed()) s.bar.webContents.send(CH.recordStatus, statusPayload(s));
+  // 标注层也订阅 status：画布尺寸（syncCanvas）全靠这里的 region，不发的话
+  // #ink 的 backing store 会停在 canvas 默认的 300×150，标注被裁剪、拉伸
+  if (inkWindow && !inkWindow.isDestroyed()) inkWindow.webContents.send(CH.recordStatus, statusPayload(s));
 }
 
 async function grabFrame(): Promise<void> {
@@ -613,6 +618,9 @@ export function ensureInkWindow(): BrowserWindow | null {
     skipTaskbar: true,
     transparent: true,
     fullscreenable: false,
+    // 标注层与录制区域同形 —— 选区含菜单栏条带时必须能越出工作区，
+    // 否则 AppKit 首次上屏把它钳下来，标注坐标整体错位（见 AGENTS.md 不变量）
+    enableLargerThanScreen: true,
     focusable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -626,7 +634,16 @@ export function ensureInkWindow(): BrowserWindow | null {
   win.setIgnoreMouseEvents(true, { forward: true });
   forwardRendererLogs(win, 'record-ink');
   inkWindow = win;
-  void loadRecordPage(win, 'ink').catch((err: unknown) => console.error('[record] 标注层加载失败', err));
+  void loadRecordPage(win, 'ink')
+    .then(() => {
+      // 上屏只在这一处做：本窗口整窗穿透 + 全透明，平时上屏无感，但**必须**
+      // 上屏 —— show:false 的窗口画布画了也看不见，标注等于没画
+      if (inkWindow === win && !win.isDestroyed()) win.showInactive();
+      // 页面刚就绪，等不到下一拍周期推送：补发一份当前状态，
+      // 标注层的 syncCanvas 立刻按 region 把画布尺寸调对
+      if (state) pushStatus(state);
+    })
+    .catch((err: unknown) => console.error('[record] 标注层加载失败', err));
   return win;
 }
 
@@ -670,6 +687,8 @@ function ensureToolbarWindow(): BrowserWindow | null {
     skipTaskbar: true,
     transparent: true,
     fullscreenable: false,
+    // 与控制条 / 标注层同款：控制条贴屏顶时工具条翻到它上方，可能探进菜单栏条带
+    enableLargerThanScreen: true,
     // 不参与焦点：点工具条不能把用户正在操作的应用的键盘焦点抢走
     focusable: false,
     webPreferences: {
@@ -723,12 +742,24 @@ export async function onRecordExport(payload: RecordExportPayload): Promise<Reco
     const suggested = recordFileName(payload.format);
 
     if (payload.kind === 'copy') {
-      // 单文件成品直接进剪贴板；同时也落一份盘 —— 视频类内容粘到聊天窗口时
-      // 不少应用只认文件路径，两种都给上最稳
-      await clipboard.write([new ClipboardItem({ [mime]: toBlob(data, mime) })]);
-      const target = await writeToSaveDir(data, suggested);
-      clipboard.writeText(target);
-      return { ok: true, path: target };
+      // 同时也落一份盘：视频类内容粘到聊天窗口时不少应用只认文件路径。
+      // 落盘失败不打断「复制」—— 图像进剪贴板才是这条路径的主目的
+      let target: string | null = null;
+      try {
+        target = await writeToSaveDir(data, suggested);
+      } catch (err) {
+        console.error('[record] 复制时落盘失败', err);
+      }
+      // 图像与路径放进**同一个** ClipboardItem 一次写入 —— 剪贴板每次 write
+      // 都会清掉旧内容，分两次写的话后写的路径文本会把图像整个覆盖掉，
+      // 「复制」就退化成「保存 + 复制路径」了
+      await clipboard.write([
+        new ClipboardItem({
+          [mime]: toBlob(data, mime),
+          ...(target ? { 'text/plain': target } : {}),
+        }),
+      ]);
+      return { ok: true, path: target ?? undefined };
     }
 
     const target = await pickTargetFile(suggested, payload.format);
