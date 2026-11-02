@@ -24,6 +24,44 @@ const toolbarEl = document.getElementById('toolbar') as HTMLDivElement;
 const textEditorEl = document.getElementById('text-editor') as HTMLTextAreaElement;
 const shortcutPanelEl = document.getElementById('shortcut-panel') as HTMLDivElement;
 const ocrPanelEl = document.getElementById('ocr-panel') as HTMLDivElement;
+/**
+ * OCR 请求序号：每次点「提取文字」自增，结果回调只认最新一次。
+ *
+ * 主进程那边虽然用 ocrBusy 挡并发，但「识别中被会话结束打断」时结果会
+ * 迟到；序号能保证迟到的结果不会覆盖掉新会话正在显示的内容。
+ */
+let ocrSeq = 0;
+/** 「识别中…」的计时器：带秒数，用户能判断是慢还是卡死 */
+let ocrPlaceholderTimer: number | null = null;
+
+function stopOcrPlaceholder(): void {
+  if (ocrPlaceholderTimer !== null) {
+    clearInterval(ocrPlaceholderTimer);
+    ocrPlaceholderTimer = null;
+  }
+}
+
+/**
+ * 识别中的占位文案。
+ *
+ * macOS 首次调 Vision 要加载模型（代码注释里记的 30s+），期间界面如果只有
+ * 一句静止的「识别中…」，用户会当成卡死反复点击。这里带上已用秒数，超过
+ * 3 秒再加一句说明。
+ */
+function startOcrPlaceholder(seq: number): void {
+  stopOcrPlaceholder();
+  const t0 = performance.now();
+  const tick = (): void => {
+    if (seq !== ocrSeq) {
+      stopOcrPlaceholder();
+      return;
+    }
+    const sec = Math.floor((performance.now() - t0) / 1000);
+    ocrTextEl.textContent = sec >= 3 ? `识别中… 已 ${sec} 秒（首次使用需加载模型，可能较慢）` : `识别中… 已 ${sec} 秒`;
+  };
+  tick();
+  ocrPlaceholderTimer = window.setInterval(tick, 1000);
+}
 const ocrTextEl = document.getElementById('ocr-text') as HTMLPreElement;
 const ocrCopyBtn = document.getElementById('ocr-copy') as HTMLButtonElement;
 const ocrCloseBtn = document.getElementById('ocr-close') as HTMLButtonElement;
@@ -440,8 +478,9 @@ function setupAnnotation(): void {
       id: 'ocr',
       label: '提取文字',
       run: () => {
-        ocrTextEl.textContent = '识别中…';
+        ocrSeq += 1;
         ocrPanelEl.hidden = false;
+        startOcrPlaceholder(ocrSeq);
         void window.api.overlay.action({ kind: 'ocr' });
       },
     },
@@ -608,6 +647,13 @@ async function main(): Promise<void> {
     magEl.hidden = true;
     toolbarEl.hidden = true;
     shortcutPanelEl.hidden = true;
+    // OCR 面板是**会话状态**，收起时必须一起清：窗口按 displayId 缓存复用，
+    // 不清的话下次截图一进来就顶着上次的识别结果（还带着「识别中…」这种
+    // 过期文案），用户会以为这次识别卡住了
+    stopOcrPlaceholder();
+    ocrPanelEl.hidden = true;
+    ocrTextEl.textContent = '';
+    ocrSeq = 0;
     stopNudgeRepeat();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -627,6 +673,9 @@ async function main(): Promise<void> {
 
   // OCR 结果面板：识别中由按钮置为占位文案，这里接收最终结果
   window.api.overlay.ocrResult(({ ok, text, error }) => {
+    // 序号为 0 说明本会话还没发起过识别（面板被 teardown 清过），迟到的结果直接丢弃
+    if (ocrSeq === 0) return;
+    stopOcrPlaceholder();
     ocrPanelEl.hidden = false;
     if (ok) {
       ocrTextEl.textContent = text && text.length > 0 ? text : '（未识别到文字）';
@@ -643,6 +692,7 @@ async function main(): Promise<void> {
     });
   });
   ocrCloseBtn.addEventListener('click', () => {
+    stopOcrPlaceholder();
     ocrPanelEl.hidden = true;
   });
 

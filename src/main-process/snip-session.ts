@@ -794,19 +794,43 @@ export function onOverlayAction(sender: WebContents, kind: OverlayActionKind): v
   requestExport(kind);
 }
 
-/** OCR 识别进行中（同时只允许一个） */
-let ocrBusy = false;
+/**
+ * OCR 识别进行中（同时只允许一个）。
+ *
+ * 记的是**发起那次识别的会话**而不是布尔值：识别可能因为系统调用卡住而
+ * 迟迟不 finally，若用裸布尔，这个标志会跨会话残留 —— 用户下一次截图点
+ * 「提取文字」就被无声拦掉，表现为「识别功能时灵时不灵」。
+ */
+let ocrBusyFor: Session | null = null;
 
 /**
  * OCR 提取文字：识别的是**已冻结的截图**（会话不中断、遮罩不收起），
  * 区域与长图同款取最大交集；结果经 ocrResult 推回发起识别的遮罩。
+ *
+ * 任何一条「不能识别」的分支都必须**回一条失败结果**：渲染端在点按钮时
+ * 已经把文案改成「识别中…」，静默 return 会让界面永远停在那句话上。
  */
 function startOcr(s: Session, sender: WebContents): void {
+  const fail = (error: string): void => {
+    console.warn(`[ocr] 未执行：${error}`);
+    if (!sender.isDestroyed()) sender.send(CH.ocrResult, { ok: false, error });
+  };
+
   const sel = s.selection;
-  if (!hasRealSelection(sel) || ocrBusy) return;
+  if (!hasRealSelection(sel)) {
+    fail('选区无效');
+    return;
+  }
+  if (ocrBusyFor && ocrBusyFor === session) {
+    fail('已有一次识别在进行中，请稍候');
+    return;
+  }
   const pick = bestRegionOnDisplay(s.shots, sel);
-  if (!pick) return;
-  ocrBusy = true;
+  if (!pick) {
+    fail('选区无法落在单块屏内');
+    return;
+  }
+  ocrBusyFor = s;
   void (async () => {
     const { recognizeImagePng } = await import('./ocr');
     // cropShot 给出 RGBA；nativeImage.createFromBitmap 要 BGRA，换回来
@@ -819,13 +843,16 @@ function startOcr(s: Session, sender: WebContents): void {
     }
     const png = nativeImage.createFromBitmap(bgra, { width: frame.width, height: frame.height }).toPNG();
     const text = await recognizeImagePng(png);
-    if (!sender.isDestroyed()) {
+    // 识别期间用户可能已取消截图 / 换了区域：这时不再往旧窗口推结果
+    if (session === s && !sender.isDestroyed()) {
       sender.send(CH.ocrResult, { ok: true, text });
+    } else {
+      console.warn('[ocr] 识别完成，但会话已结束，结果丢弃');
     }
   })()
     .catch((err: unknown) => {
       console.error('[ocr] 识别失败', err);
-      if (!sender.isDestroyed()) {
+      if (session === s && !sender.isDestroyed()) {
         sender.send(CH.ocrResult, {
           ok: false,
           error: err instanceof Error ? err.message : String(err),
@@ -833,7 +860,7 @@ function startOcr(s: Session, sender: WebContents): void {
       }
     })
     .finally(() => {
-      ocrBusy = false;
+      if (ocrBusyFor === s) ocrBusyFor = null;
     });
 }
 
@@ -1362,6 +1389,8 @@ export function cancelSnip(reason = 'manual'): void {
   const s = session;
   if (s) console.log(`[snip] 取消截图 (${reason}) phase=${s.phase}`);
   session = null;
+  // OCR 标志跟着会话一起失效：它持有 Session 引用，不清会拖住整个会话对象
+  ocrBusyFor = null;
   if (readyTimer) {
     clearTimeout(readyTimer);
     readyTimer = null;
