@@ -24,6 +24,12 @@ const toolbarEl = document.getElementById('toolbar') as HTMLDivElement;
 const textEditorEl = document.getElementById('text-editor') as HTMLTextAreaElement;
 const shortcutPanelEl = document.getElementById('shortcut-panel') as HTMLDivElement;
 const ocrPanelEl = document.getElementById('ocr-panel') as HTMLDivElement;
+const ocrTextEl = document.getElementById('ocr-text') as HTMLPreElement;
+const ocrBodyEl = document.getElementById('ocr-body') as HTMLDivElement;
+const ocrMetaEl = document.getElementById('ocr-meta') as HTMLSpanElement;
+const ocrCopyBtn = document.getElementById('ocr-copy') as HTMLButtonElement;
+const ocrCloseBtn = document.getElementById('ocr-close') as HTMLButtonElement;
+
 /**
  * OCR 请求序号：每次点「提取文字」自增，结果回调只认最新一次。
  *
@@ -33,12 +39,33 @@ const ocrPanelEl = document.getElementById('ocr-panel') as HTMLDivElement;
 let ocrSeq = 0;
 /** 「识别中…」的计时器：带秒数，用户能判断是慢还是卡死 */
 let ocrPlaceholderTimer: number | null = null;
+/** 本轮识别的起始时刻，用于出结果时显示耗时 */
+let ocrStartedAt = 0;
+
+/**
+ * 面板状态：识别中 / 有结果 / 识别成功但没文字 / 失败。
+ *
+ * 用面板上的 data-state 驱动外观（状态点颜色、正文对齐方式），而不是靠改
+ * 文案让人猜 —— 空结果和失败看起来完全不一样，用户不用读字就分得清。
+ */
+type OcrState = 'working' | 'ok' | 'empty' | 'error';
+
+function setOcrState(state: OcrState): void {
+  ocrPanelEl.dataset.state = state;
+  // 没文字可复制时禁掉按钮，别让人点了个空
+  ocrCopyBtn.disabled = state !== 'ok';
+}
 
 function stopOcrPlaceholder(): void {
   if (ocrPlaceholderTimer !== null) {
     clearInterval(ocrPlaceholderTimer);
     ocrPlaceholderTimer = null;
   }
+}
+
+/** 正文区的「说明类」文案：居中显示，与正式结果区分 */
+function setOcrNotice(text: string): void {
+  ocrTextEl.textContent = text;
 }
 
 /**
@@ -50,21 +77,21 @@ function stopOcrPlaceholder(): void {
  */
 function startOcrPlaceholder(seq: number): void {
   stopOcrPlaceholder();
-  const t0 = performance.now();
+  setOcrState('working');
+  ocrMetaEl.textContent = '';
+  ocrStartedAt = performance.now();
   const tick = (): void => {
     if (seq !== ocrSeq) {
       stopOcrPlaceholder();
       return;
     }
-    const sec = Math.floor((performance.now() - t0) / 1000);
-    ocrTextEl.textContent = sec >= 3 ? `识别中… 已 ${sec} 秒（首次使用需加载模型，可能较慢）` : `识别中… 已 ${sec} 秒`;
+    const sec = Math.floor((performance.now() - ocrStartedAt) / 1000);
+    setOcrNotice(sec >= 3 ? `识别中…\n首次使用需加载模型，可能要等一会儿` : '识别中…');
+    ocrMetaEl.textContent = `${sec} 秒`;
   };
   tick();
   ocrPlaceholderTimer = window.setInterval(tick, 1000);
 }
-const ocrTextEl = document.getElementById('ocr-text') as HTMLPreElement;
-const ocrCopyBtn = document.getElementById('ocr-copy') as HTMLButtonElement;
-const ocrCloseBtn = document.getElementById('ocr-close') as HTMLButtonElement;
 
 let shot: DisplayShot | null = null;
 let payload: OverlaySelectionPayload | null = null;
@@ -652,7 +679,10 @@ async function main(): Promise<void> {
     // 过期文案），用户会以为这次识别卡住了
     stopOcrPlaceholder();
     ocrPanelEl.hidden = true;
+    delete ocrPanelEl.dataset.state;
     ocrTextEl.textContent = '';
+    ocrMetaEl.textContent = '';
+    ocrCopyBtn.disabled = true;
     ocrSeq = 0;
     stopNudgeRepeat();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -677,18 +707,40 @@ async function main(): Promise<void> {
     if (ocrSeq === 0) return;
     stopOcrPlaceholder();
     ocrPanelEl.hidden = false;
-    if (ok) {
-      ocrTextEl.textContent = text && text.length > 0 ? text : '（未识别到文字）';
-    } else {
-      ocrTextEl.textContent = `识别失败：${error ?? '未知错误'}`;
+    const cost = Math.max(0, Math.round(performance.now() - ocrStartedAt));
+
+    if (!ok) {
+      setOcrState('error');
+      setOcrNotice(`识别失败\n${error ?? '未知错误'}`);
+      ocrMetaEl.textContent = `用时 ${(cost / 1000).toFixed(1)}s`;
+      return;
     }
+    // 去掉首尾空白：OCR 结果常以换行收尾，会在面板底部留下一条空行
+    const content = (text ?? '').trim();
+    if (content.length === 0) {
+      setOcrState('empty');
+      setOcrNotice('没有识别到文字\n试试放大选区，或换一块更清晰的区域');
+      ocrMetaEl.textContent = `用时 ${(cost / 1000).toFixed(1)}s`;
+      return;
+    }
+    setOcrState('ok');
+    ocrTextEl.textContent = content;
+    // 字数不含空白，跟编辑器的「字数」口径一致；行数按实际换行算
+    const chars = content.replace(/\s/g, '').length;
+    const lines = content.split('\n').length;
+    ocrMetaEl.textContent = `${chars} 字 · ${lines} 行 · ${(cost / 1000).toFixed(1)}s`;
+    // 结果区的滚动位置回到顶部：上一次可能滚到了底部
+    ocrBodyEl.scrollTop = 0;
   });
   ocrCopyBtn.addEventListener('click', () => {
-    void window.api.overlay.copyText({ text: ocrTextEl.textContent ?? '' }).then((res) => {
-      ocrCopyBtn.textContent = res.ok ? '已复制' : '复制失败';
+    const text = ocrTextEl.textContent ?? '';
+    if (!text) return;
+    void window.api.overlay.copyText({ text }).then((res) => {
+      // 记住原文案再还原：按钮宽度会随「已复制」变化，但这是唯一的变化点
+      ocrCopyBtn.textContent = res.ok ? '✓ 已复制' : '复制失败';
       setTimeout(() => {
         ocrCopyBtn.textContent = '复制文字';
-      }, 1200);
+      }, 1400);
     });
   });
   ocrCloseBtn.addEventListener('click', () => {

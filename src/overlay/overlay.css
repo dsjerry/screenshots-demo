@@ -113,8 +113,13 @@ body {
 }
 
 /* ---------------- OCR 结果面板 ----------------
-   识别的是已冻结的截图（会话不中断），面板贴屏幕右上角，
-   可滚动、可复制；关闭后继续标注。 */
+   识别的是已冻结的截图（会话不中断），面板贴屏幕右上角，可滚动、可复制；
+   关闭后继续标注。
+
+   视觉与工具条 / 快捷键面板同一套深色语言，但强调「这是一份可读的文本」：
+   底色比工具条更沉一点，正文区单独下沉一层，长文本用等宽可读的行高。
+   三种状态（识别中 / 有结果 / 失败）靠标题前的圆点颜色区分 —— 不改按钮、
+   不弹提示，扫一眼就知道当前处于哪一步。 */
 .ocr-panel {
   position: fixed;
   top: 12px;
@@ -122,16 +127,23 @@ body {
   z-index: 25;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 340px;
-  max-height: 60vh;
-  padding: 10px 12px;
-  background: rgba(24, 26, 30, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  gap: 0;
+  width: 360px;
+  /* 高度随内容走：只有识别中 / 有结果才需要展开，空态与失败态内容就一两行，
+     撑满 62vh 会是一大片空壳 */
+  max-height: 62vh;
+  padding: 0;
+  background: rgba(22, 24, 29, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  /* 双层投影：近处一圈收紧的接触阴影 + 远处一层扩散，浮起感比单层更自然 */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 32px rgba(0, 0, 0, 0.45);
   color: #d7dade;
   font-size: 12px;
+  /* 面板自身不吃指针穿透，但内部按钮要能点 —— 遮罩画布是全屏的 */
+  overflow: hidden;
 }
 
 .ocr-panel[hidden] {
@@ -141,64 +153,201 @@ body {
 .ocr-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 9px;
+  /* 标题栏与正文之间用极淡的分隔线，比整块背景色差更克制 */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex: none;
+}
+
+/* 状态点：颜色由 data-state 决定，识别中会呼吸 */
+.ocr-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6b7280;
+}
+
+.ocr-panel[data-state='working'] .ocr-dot {
+  background: #2f8fed;
+  animation: ocr-pulse 1.1s ease-in-out infinite;
+}
+
+.ocr-panel[data-state='ok'] .ocr-dot {
+  background: #35c07a;
+}
+
+.ocr-panel[data-state='empty'] .ocr-dot {
+  background: #d0a03a;
+}
+
+.ocr-panel[data-state='error'] .ocr-dot {
+  background: #ff453a;
+}
+
+@keyframes ocr-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
+.ocr-title {
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
+  flex: none;
 }
 
-.ocr-head button {
+/* 右侧的辅助信息（字数 / 耗时）：贴住右侧，弱于标题一级 */
+.ocr-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: rgba(215, 218, 222, 0.5);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ocr-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
   padding: 0;
   border: none;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #d7dade;
-  font-size: 14px;
-  line-height: 20px;
+  background: transparent;
+  color: rgba(215, 218, 222, 0.7);
   cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
-.ocr-head button:hover {
-  background: rgba(255, 59, 48, 0.85);
+.ocr-icon-btn:hover {
+  background: rgba(255, 59, 48, 0.9);
   color: #ffffff;
+}
+
+/* 正文容器：可滚动，内边距留给滚动条与文本之间喘气 */
+.ocr-body {
+  /* 0 1 auto：短内容不撑高（面板高度跟内容走），长内容才触发滚动 */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  /* 滚动条与面板同色系，别用系统默认的亮色条 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.ocr-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ocr-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+}
+
+.ocr-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 #ocr-text {
   margin: 0;
-  padding: 8px;
-  max-height: 40vh;
-  overflow: auto;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.3);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, 'Microsoft YaHei', monospace;
+  font-size: 12.5px;
+  /* 识别结果是给人读的：行高比代码块松一点 */
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e6e8ea;
+  user-select: text;
+  cursor: text;
+}
+
+/* 空状态 / 错误态的文案是「说明」而非「内容」，弱化并居中，与正式结果区分开 */
+.ocr-panel[data-state='empty'] #ocr-text,
+.ocr-panel[data-state='error'] #ocr-text {
+  color: rgba(215, 218, 222, 0.55);
   font-family: inherit;
   font-size: 12px;
   line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-  user-select: text;
-  cursor: text;
+  text-align: center;
+  /* 说明类文案只有一两行：内边距压到最小，面板才不会被撑成空壳 */
+  padding: 2px 4px;
+  margin: auto 0;
+}
+
+.ocr-panel[data-state='error'] #ocr-text {
+  color: #ff8a80;
+}
+
+/* 识别中：文案居中，明确「还在跑」而不是「坏了」 */
+.ocr-panel[data-state='working'] #ocr-text {
+  color: rgba(215, 218, 222, 0.62);
+  font-family: inherit;
+  text-align: center;
+  padding: 2px 4px;
+  margin: auto 0;
 }
 
 .ocr-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  padding: 9px 12px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  flex: none;
 }
 
 .ocr-actions button {
-  padding: 5px 12px;
-  border: none;
-  border-radius: 6px;
-  background: #2f6fed;
-  color: #ffffff;
+  padding: 5px 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7dade;
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 
-.ocr-actions button:hover {
-  background: #4280f0;
+.ocr-actions button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.ocr-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 主操作（复制）：与工具条「确定」同款 tonal 强调，不用实心抢视线 */
+.ocr-primary {
+  border-color: rgba(91, 141, 245, 0.55) !important;
+  background: rgba(47, 111, 237, 0.22) !important;
+  color: #cfe0ff !important;
+}
+
+.ocr-primary:hover:not(:disabled) {
+  background: rgba(47, 111, 237, 0.4) !important;
+  color: #ffffff !important;
 }
 
 /* 左下角快捷键提示面板：本屏是工具条所在屏且已有选区时显示。

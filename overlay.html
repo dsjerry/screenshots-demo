@@ -15,12 +15,26 @@
     <div id="toolbar" class="toolbar" hidden></div>
     <div id="ocr-panel" class="ocr-panel" hidden>
       <div class="ocr-head">
-        <span>识别结果</span>
-        <button id="ocr-close" type="button" aria-label="关闭">×</button>
+        <span class="ocr-dot" aria-hidden="true"></span>
+        <span id="ocr-title" class="ocr-title">识别结果</span>
+        <span id="ocr-meta" class="ocr-meta"></span>
+        <button id="ocr-close" type="button" class="ocr-icon-btn" aria-label="关闭" title="关闭（Esc）">
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path
+              d="M3.5 3.5l9 9M12.5 3.5l-9 9"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
       </div>
-      <pre id="ocr-text"></pre>
+      <div id="ocr-body" class="ocr-body">
+        <pre id="ocr-text"></pre>
+      </div>
       <div class="ocr-actions">
-        <button id="ocr-copy" type="button">复制文字</button>
+        <button id="ocr-copy" type="button" class="ocr-primary">复制文字</button>
       </div>
     </div>
     <div id="shortcut-panel" class="shortcut-panel" hidden>
