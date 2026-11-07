@@ -1,35 +1,49 @@
 import path from 'node:path';
-import { Menu, Tray, nativeImage, app } from 'electron';
+import { Menu, Tray, nativeImage, nativeTheme, app } from 'electron';
 import type { BrowserWindow, Rectangle } from 'electron';
 
 /**
- * 托盘图标：
- * - macOS：菜单栏用**模板图标**（HIG 规范）—— 代码绘制的单色「取景框 +
- *   中心点」字形（呼应应用标识），setTemplateImage 交由系统按菜单栏外观
- *   （深/浅色、高亮）着色，无任何资源依赖；
- * - 其他平台：任务栏惯例是彩色图标，直接用应用图标 app.png 缩放（extra-
- *   Resource 随包分发，dev 走仓库路径），附 2x 表示供 hiDPI 取用。
- * 图标文件缺失 / 损坏时回退到代码绘制的位图（buildTrayImage）——
- * 空托盘图标等于看不见应用。
+ * 托盘图标：两平台都用**应用图标派生的单色字形**（app-template.png，
+ * 白色照片卡片 + 星光，生成规则见 `make-template.py`）——
+ * - macOS：作为**模板图标**（HIG 规范），setTemplateImage 交由系统按
+ *   菜单栏外观（深/浅色、高亮）着色；
+ * - 其他平台：任务栏不认模板图，按系统深浅色在白 / 黑字形间切换
+ *   （nativeTheme 'updated' 时重设，见 onThemeUpdated）。
+ * 模板资源缺失 / 损坏时回退到代码绘制的位图（buildTemplateGlyph /
+ * buildTrayImage）—— 空托盘图标等于看不见应用。
  */
+
+/** 图标资源路径：extraResource 随包直达（打包），dev 走仓库路径 */
+function iconPath(name: string): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, name)
+    : path.join(app.getAppPath(), 'resources', 'icons', name);
+}
+
+/** 从单色模板 PNG 组装托盘位图（16px @1x + 原图 32px 作 @2x），缺失返回 null */
+function monoTrayImage(name: string): Electron.NativeImage | null {
+  const source = nativeImage.createFromPath(iconPath(name));
+  if (source.isEmpty()) return null;
+  const img = source.resize({ width: 16, height: 16 });
+  img.addRepresentation({ scaleFactor: 2, buffer: source.toPNG() });
+  return img;
+}
+
 function trayIconImage(): Electron.NativeImage {
   if (process.platform === 'darwin') {
-    const img = buildTemplateGlyph(1);
-    img.addRepresentation({ scaleFactor: 2, buffer: buildTemplateGlyph(2).toPNG() });
-    img.setTemplateImage(true);
-    return img;
+    const img = monoTrayImage('app-template.png');
+    if (img) {
+      img.setTemplateImage(true);
+      return img;
+    }
+    const fallback = buildTemplateGlyph(1);
+    fallback.addRepresentation({ scaleFactor: 2, buffer: buildTemplateGlyph(2).toPNG() });
+    fallback.setTemplateImage(true);
+    return fallback;
   }
-  const p = app.isPackaged
-    ? path.join(process.resourcesPath, 'app.png')
-    : path.join(app.getAppPath(), 'resources', 'icons', 'app.png');
-  const source = nativeImage.createFromPath(p);
-  if (source.isEmpty()) return buildTrayImage();
-  const img = source.resize({ width: 16, height: 16 });
-  img.addRepresentation({
-    scaleFactor: 2,
-    buffer: source.resize({ width: 32, height: 32 }).toPNG(),
-  });
-  return img;
+  // 任务栏深色 → 白字形，浅色 → 黑字形；切换由 onThemeUpdated 跟随
+  const img = monoTrayImage(nativeTheme.shouldUseDarkColors ? 'app-template.png' : 'app-template-inverse.png');
+  return img ?? buildTrayImage();
 }
 
 /**
@@ -143,10 +157,17 @@ export interface TrayCallbacks {
 
 let tray: Tray | null = null;
 
+/** 系统深浅色切换 → 非 mac 重新选字形极性（mac 模板图交系统着色，无需响应） */
+function onThemeUpdated(): void {
+  if (process.platform === 'darwin') return;
+  if (tray && !tray.isDestroyed()) tray.setImage(trayIconImage());
+}
+
 export function createTray(cb: TrayCallbacks): Tray {
   tray?.destroy();
   tray = new Tray(trayIconImage());
   tray.setToolTip('截图工具');
+  nativeTheme.on('updated', onThemeUpdated);
 
   const menu = Menu.buildFromTemplate([
     { label: '截图', click: () => cb.onSnip() },
@@ -183,6 +204,7 @@ export function getTrayBounds(): Rectangle | null {
 }
 
 export function destroyTray(): void {
+  nativeTheme.off('updated', onThemeUpdated);
   tray?.destroy();
   tray = null;
 }

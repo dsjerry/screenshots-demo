@@ -8,3 +8,6 @@ dist/
 package-lock.json
 *.min.js
 *.map
+
+# 非 JS 生态的工具脚本（prettier 无 parser，扫到即报错）
+*.py
