@@ -555,6 +555,17 @@ function setupAnnotation(): void {
     onTextEdit: (open) => {
       void window.api.overlay.editState({ textEditing: open });
     },
+    // 选区边框 / 手柄的 resize 光标必须赢过编辑器的 crosshair —— 两个
+    // window 级 pointermove 都写 canvas 的 cursor，编辑器注册在后每步都盖；
+    // 与 routeToSelection 同一套 hitResizeZone：光标说能调，按下去就能调
+    cursorOverride: (event) => {
+      const p = { x: event.clientX, y: event.clientY };
+      const handle = hitResizeZone(p);
+      if (handle) return HANDLE_CURSOR[handle];
+      // 手型在选区内按下是整体移动（routeToSelection 的接管规则），光标跟手
+      const local = selectionLocal();
+      return payload?.activeTool === 'hand' && local && pointInRect(local, p) ? 'move' : null;
+    },
   });
   editor = instance;
 

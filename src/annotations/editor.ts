@@ -38,6 +38,14 @@ export interface EditorOptions {
    */
   onHandDown?: (event: PointerEvent) => boolean;
   /**
+   * 宿主光标接管：hoverCursor 每次先问宿主，返回非空串就直接采用，
+   * 返回 null 才走编辑器自己的判定（选中图形的 move / 手柄光标、默认
+   * crosshair）。遮罩用它给选区边框 / 手柄上 resize 光标 —— 遮罩与编辑器
+   * 的 pointermove 都注册在 window 上（编辑器在后，每步都会盖写 cursor），
+   * 没有这条钩子 resize 光标永远被 crosshair 覆盖，与按下路由不一致。
+   */
+  cursorOverride?: (event: { clientX: number; clientY: number }) => string | null;
+  /**
    * 坐标换算空间：
    * - `css`（遮罩在用）= CSS px ≡ 本屏 DIP —— 它的 ctx 按 dpr 缩放过，画的就是 DIP；
    * - `backing` = 画布 backing 像素，留给「画布 = 图像像素」的宿主
@@ -428,6 +436,12 @@ export class Editor {
 
   /** 只针对**已选中**那条：手柄给调整光标、图形本体给移动光标。 */
   private hoverCursor(event: { clientX: number; clientY: number }): void {
+    // 宿主优先（选区边框 / 手柄的 resize 光标）—— 它与按下路由共用一套几何
+    const override = this.opts.cursorOverride?.(event);
+    if (override) {
+      this.canvas.style.cursor = override;
+      return;
+    }
     if (!this.selected) {
       this.updateCursor();
       return;
