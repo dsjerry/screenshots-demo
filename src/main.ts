@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, nativeTheme, screen, shell } from 'electron';
+import { app, BrowserWindow, globalShortcut, nativeImage, nativeTheme, screen, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { CH } from './shared/channels';
@@ -226,10 +226,30 @@ const GITHUB_URL = 'https://github.com/dsjerry/screenshots-demo';
 
 let aboutWin: BrowserWindow | null = null;
 
+/** 关于页 logo 的兜底：代码绘制的取景框 SVG（应用图标缺失 / 损坏时用 ——
+ *  空 logo 等于没有门面，与托盘 buildTrayImage 的兜底哲学一致）。 */
+const FALLBACK_LOGO_SVG =
+  '<svg width="40" height="40" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#2f6fed"/><path d="M3 5.5V3h2.5 M10.5 3H13v2.5 M13 10.5V13h-2.5 M5.5 13H3v-2.5" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="8" cy="8" r="1.4" fill="#fff"/></svg>';
+
+/**
+ * 关于页的真实应用图标：与托盘（`tray.ts`）同一套路径规则 —— extraResource
+ * 随包直达，dev 走仓库路径。data URL 页面引用不了外部文件，只能把 PNG
+ * base64 内嵌；原图约 1MB，用 nativeImage 缩到 128px（40px @3x 足够清晰）
+ * 再编码，内嵌体积从 1.4MB 降到几十 KB。
+ */
+function aboutLogoHtml(): string {
+  const p = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.png')
+    : path.join(app.getAppPath(), 'resources', 'icons', 'app.png');
+  const source = nativeImage.createFromPath(p);
+  if (source.isEmpty()) return FALLBACK_LOGO_SVG;
+  const png = source.resize({ width: 128 }).toPNG();
+  return `<img width="40" height="40" src="data:image/png;base64,${png.toString('base64')}" alt="">`;
+}
+
 /** 关于页（data URL 静态页）：与 HUD 同一套玻璃视觉，链接行转系统浏览器打开。 */
 function aboutHtml(): string {
-  const logo =
-    '<svg width="40" height="40" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#2f6fed"/><path d="M3 5.5V3h2.5 M10.5 3H13v2.5 M13 10.5V13h-2.5 M5.5 13H3v-2.5" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="8" cy="8" r="1.4" fill="#fff"/></svg>';
+  const logo = aboutLogoHtml();
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 * { box-sizing: border-box; }
 body { margin:0; height:100vh; display:flex; flex-direction:column; align-items:center;
