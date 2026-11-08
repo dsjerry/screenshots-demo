@@ -135,6 +135,19 @@ export interface ScrollActionPayload {
 }
 
 /**
+ * 滚动小地图快照：控制条把累积缓冲的缩略图（PNG）与当前视口框位置
+ * 推给主进程，转发给小地图窗口。快照无状态 —— 小地图晚加载丢早包
+ * 无影响，下一拍自然补上。
+ * `viewTop` / `viewHeight` 是**缩略图像素行号**（发送端已按缩放比折算，
+ * 接收端对 png 高度线性映射即可）。
+ */
+export interface ScrollMinimapPayload {
+  png: Uint8Array;
+  viewTop: number;
+  viewHeight: number;
+}
+
+/**
  * 主进程广播给**其余遮罩**的跨屏标注（来源屏已提交的全部标注）。
  * 坐标已换算成虚拟屏 DIP —— 接收方减去自己那块屏的原点就是本窗口局部坐标。
  */

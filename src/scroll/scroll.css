@@ -100,3 +100,46 @@ body {
 .actions button.danger:hover {
   background: rgba(255, 59, 48, 0.85);
 }
+
+/* ---------------- 小地图（#minimap 角色） ----------------
+   贴在选区旁的竖向缩略窗：磨砂玻璃语言与控制条同款（不用 backdrop-filter
+   —— Windows 上它会把透明窗口的合成面变成不透明，见文件头注释）。
+   窗口本体也是 8px padding（body），画布填满面板、绘制时再留内边距。 */
+.minimap {
+  position: fixed;
+  inset: 8px;
+  box-sizing: border-box;
+  background: rgba(18, 20, 24, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.minimap[hidden] {
+  display: none;
+}
+
+#minimap-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 空态提示：第一份快照到达前占位 */
+.minimap-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  text-align: center;
+  color: rgba(215, 218, 222, 0.55);
+  font-size: 11px;
+  line-height: 1.6;
+}

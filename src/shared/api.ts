@@ -26,6 +26,7 @@ import type {
   RecordTimelinePayload,
   ScrollActionPayload,
   ScrollFramePayload,
+  ScrollMinimapPayload,
   SettingsPatch,
   Shape,
   ToolId,
@@ -114,6 +115,10 @@ export interface ScreenshotsApi {
     frame(cb: (payload: ScrollFramePayload) => void): () => void;
     /** 复制 / 保存（随带拼接好的长图 PNG）/ 取消 */
     action(payload: ScrollActionPayload): Promise<void>;
+    /** 控制条：上行小地图快照（缩略图 PNG + 视口框行号），主进程转发给小地图窗口 */
+    minimap(payload: ScrollMinimapPayload): Promise<void>;
+    /** 小地图窗口：接收控制条合成的拼接快照 */
+    minimapData(cb: (payload: ScrollMinimapPayload) => void): () => void;
   };
   history: {
     /** 拉取历史条目列表 */

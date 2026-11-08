@@ -56,6 +56,8 @@ const api: ScreenshotsApi = {
   scroll: {
     frame: (cb) => on(CH.scrollFrame, cb),
     action: (payload) => ipcRenderer.invoke(CH.scrollAction, payload),
+    minimap: (payload) => ipcRenderer.invoke(CH.scrollMinimap, payload),
+    minimapData: (cb) => on(CH.scrollMinimap, cb),
   },
   history: {
     boot: () => ipcRenderer.invoke(CH.historyBoot),

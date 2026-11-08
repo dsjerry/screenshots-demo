@@ -12,6 +12,7 @@ import type {
   PinAction,
   PinBootPayload,
   ScrollActionPayload,
+  ScrollMinimapPayload,
   SettingsPatch,
   Shape,
   ToolId,
@@ -38,6 +39,7 @@ import {
   setSnipHooks,
 } from './snip-session';
 import { copyPng, copyText, defaultSnipName, savePng, takePendingImageBoot } from './pin-window';
+import { onScrollMinimap } from './scroll-capture';
 import {
   onRecordAction,
   onRecordClick,
@@ -181,6 +183,7 @@ export function registerIpc(ctx: AppContext): void {
 
   // -------------------------------------------------------- 滚动截长图
   ipcMain.handle(CH.scrollAction, (event, payload: ScrollActionPayload) => onScrollAction(event.sender, payload));
+  ipcMain.handle(CH.scrollMinimap, (event, payload: ScrollMinimapPayload) => onScrollMinimap(event.sender, payload));
 
   ipcMain.handle(CH.pinReady, (event) => {
     if (ownsPendingPin(event.sender)) markPinReady(event.sender);

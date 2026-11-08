@@ -1,21 +1,24 @@
 import { BrowserWindow, screen } from 'electron';
+import type { WebContents } from 'electron';
 import path from 'node:path';
 import { captureDisplays } from './capture';
 import { forwardRendererLogs } from './renderer-log';
 import { pointInRect } from '../shared/selection';
 import { CH } from '../shared/channels';
-import type { DisplayShot, Rect, ScrollFramePayload, ScrollSpeed } from '../shared/types';
+import type { DisplayShot, Rect, ScrollFramePayload, ScrollMinimapPayload, ScrollSpeed } from '../shared/types';
 
 /**
  * 滚动截长图（参考 QQ / PixPin 的手动滚动模式）。
  *
  * 进入后**收起全屏遮罩** —— 用户要看到并滚动真实窗口，遮罩盖着就什么都
- * 动不了。取而代之的是两个专用窗口：
+ * 动不了。取而代之的是几个专用窗口：
  * - 轮廓窗：透明 + 全局点击穿透（`setIgnoreMouseEvents`），框外压暗、
  *   边框画在区域**外侧**（CSS outline）—— 边框像素落在裁剪区之外，
  *   无论 contentProtection 是否对本应用的抓屏生效都不会污染帧内容；
  * - 控制条：状态（已捕获尺寸）+ 复制 / 保存 / 取消，拼接逻辑在它的
- *   渲染进程里（行签名重叠匹配，见 `src/scroll/scroll.ts`）。
+ *   渲染进程里（行签名重叠匹配，见 `src/scroll/scroll.ts`）；
+ * - 小地图：贴在选区旁的竖向缩略窗，实时显示拼接进度与当前视口框
+ *   （快照由控制条渲染进程合成上行，本进程只转发）。
  *
  * 主进程只负责节奏：每帧抓屏 → 按选区裁出 RGBA 条带 → 推给控制条。
  * 只支持**单屏选区**：长图沿竖向滚动，跨屏选区没有意义。
@@ -25,10 +28,15 @@ const FRAME_INTERVAL_MS = 250;
 /** 窗口比 .bar 的可视区大 8px，给圆角和投影留呼吸空间（见 scroll.css） */
 const BAR_WIDTH = 560;
 const BAR_HEIGHT = 88;
+/** 小地图窗口宽（DIP，含 8px 内边距）与它和选区的间距 */
+const MAP_WIDTH = 112;
+const MAP_GAP = 12;
 
 interface ScrollState {
   bar: BrowserWindow;
   outline: BrowserWindow;
+  /** 小地图窗口；选区两侧都放不下时为 null（不视为错误） */
+  minimap: BrowserWindow | null;
   timer: NodeJS.Timeout;
   displayId: number;
   region: Rect;
@@ -105,10 +113,15 @@ export function startScrollCapture(shot: DisplayShot, region: Rect): boolean {
   const barRect = barBounds(region, d.bounds);
   bar.setBounds(barRect);
 
+  // ---- 小地图：贴选区旁的竖向缩略窗（放不下就不出，纯增益不挡路）
+  const mapRect = minimapBounds(region, d.bounds);
+  const minimap = mapRect ? ensureMinimapWindow(mapRect) : null;
+
   const timer = setInterval(() => void grabFrame(), FRAME_INTERVAL_MS);
   state = {
     bar,
     outline,
+    minimap,
     timer,
     displayId: shot.displayId,
     region,
@@ -123,7 +136,7 @@ export function startScrollCapture(shot: DisplayShot, region: Rect): boolean {
       if (!outline.isDestroyed()) outline.showInactive();
     })
     .catch((err: unknown) => console.error('[scroll] 轮廓窗加载失败', err));
-  void loadScrollBar(bar)
+  void loadScrollPage(bar, 'bar')
     .then(() => {
       if (!bar.isDestroyed()) {
         bar.show();
@@ -145,8 +158,8 @@ export function stopScrollCapture(): void {
   if (!s) return;
   state = null;
   clearInterval(s.timer);
-  for (const win of [s.bar, s.outline]) {
-    if (!win.isDestroyed()) win.destroy();
+  for (const win of [s.bar, s.outline, s.minimap]) {
+    if (win && !win.isDestroyed()) win.destroy();
   }
   console.log('[scroll] 滚动截图已收起');
 }
@@ -332,6 +345,80 @@ function barBounds(region: Rect, display: Rect): Electron.Rectangle {
   return { x, y, width: BAR_WIDTH, height: BAR_HEIGHT };
 }
 
+/**
+ * 小地图位置：优先贴选区右侧（与控制条同款 12px 间距），放不下翻左侧，
+ * 两侧都没有（选区几乎占满屏宽）返回 null —— 不出小地图，绝不盖住选区。
+ * 垂直与选区顶对齐、同高（**不给最低高度**：短选区再撑高会探进选区下方
+ * 控制条的地盘把它压住），贴屏越界往上收。
+ */
+function minimapBounds(region: Rect, display: Rect): Electron.Rectangle | null {
+  const height = Math.min(Math.round(region.height), display.height - 16);
+  let x = Math.round(region.x + region.width + MAP_GAP);
+  if (x + MAP_WIDTH > display.x + display.width - 8) {
+    x = Math.round(region.x - MAP_GAP - MAP_WIDTH);
+  }
+  if (x < display.x + 8) return null;
+  let y = Math.round(region.y);
+  if (y + height > display.y + display.height - 8) {
+    y = display.y + display.height - 8 - height;
+  }
+  return { x, y, width: MAP_WIDTH, height };
+}
+
+/**
+ * 小地图窗口：透明、置顶、内容保护（同控制条 —— 绝不能出现在帧里），
+ * 整窗点击穿透且**不参与焦点**：它是纯指示器，键盘（Esc）与滚轮都归
+ * 真实页面 / 控制条。
+ */
+function ensureMinimapWindow(rect: Electron.Rectangle): BrowserWindow {
+  const win = new BrowserWindow({
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    frame: false,
+    show: false,
+    resizable: false,
+    movable: false,
+    thickFrame: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    // transparent 窗口不要设 backgroundColor —— 会垫一层不透明合成面（同控制条）
+    transparent: true,
+    fullscreenable: false,
+    focusable: false,
+    // 遮罩同款不变量（AGENTS.md）：选区贴屏顶时小地图可能探进菜单栏条带
+    enableLargerThanScreen: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setContentProtection(true);
+  win.setIgnoreMouseEvents(true);
+  forwardRendererLogs(win, 'scroll-minimap');
+  void loadScrollPage(win, 'minimap')
+    .then(() => {
+      if (!win.isDestroyed()) win.showInactive();
+    })
+    .catch((err: unknown) => console.error('[scroll] 小地图加载失败', err));
+  return win;
+}
+
+/**
+ * 控制条上行的小地图快照 → 转发给小地图窗口。
+ * 来源必须是控制条本尊（webContents.id 校验，防伪造 / 防串会话）。
+ */
+export function onScrollMinimap(sender: WebContents, payload: ScrollMinimapPayload): void {
+  const s = state;
+  if (!s || s.bar.isDestroyed() || s.bar.webContents.id !== sender.id) return;
+  if (!s.minimap || s.minimap.isDestroyed()) return;
+  s.minimap.webContents.send(CH.scrollMinimap, payload);
+}
+
 /** 轮廓页：区域本体全透明，压暗与边框都画在**区域外**，不污染抓帧。 */
 function outlineDataUrl(region: Rect, display: Rect): string {
   const x = Math.round(region.x - display.x);
@@ -349,10 +436,17 @@ function outlineDataUrl(region: Rect, display: Rect): string {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-export async function loadScrollBar(win: BrowserWindow): Promise<void> {
+/**
+ * 控制条与小地图是**同一个 renderer 入口**（scroll.html）的两个角色：
+ * hash 分发（`#minimap` = 小地图，其余 = 控制条），三者共享同一份
+ * CSS / 脚本 —— 拆成两个入口会让 Forge 多打一份（record 同款取舍）。
+ */
+async function loadScrollPage(win: BrowserWindow, role: 'bar' | 'minimap'): Promise<void> {
   if (SCROLL_VITE_DEV_SERVER_URL) {
-    await win.loadURL(`${SCROLL_VITE_DEV_SERVER_URL}/scroll.html`);
+    await win.loadURL(`${SCROLL_VITE_DEV_SERVER_URL}/scroll.html#${role}`);
   } else {
-    await win.loadFile(path.join(__dirname, `../renderer/${SCROLL_VITE_NAME}/scroll.html`));
+    await win.loadFile(path.join(__dirname, `../renderer/${SCROLL_VITE_NAME}/scroll.html`), {
+      hash: role,
+    });
   }
 }

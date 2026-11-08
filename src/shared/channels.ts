@@ -72,6 +72,12 @@ export const CH = {
   scrollFrame: 'scroll:frame',
   /** 控制条 -> 主：复制 / 保存（随带长图 PNG）/ 取消 */
   scrollAction: 'scroll:action',
+  /**
+   * 控制条 -> 主 -> 小地图窗口：拼接快照（缩略图 PNG + 视口框行号）。
+   * 同通道双向 —— invoke 由主进程处理，send 由小地图窗口接收
+   * （record:ink 同款先例）。
+   */
+  scrollMinimap: 'scroll:minimap',
 
   /** 主窗口 -> 主：读取 / 写入应用设置 */
   settingsGet: 'settings:get',

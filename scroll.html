@@ -27,6 +27,14 @@
         <button id="cancel" type="button" class="danger">取消</button>
       </div>
     </div>
+
+    <!-- 小地图（#minimap 角色）：贴在选区旁的竖向缩略窗，与控制条同一入口
+         的另一个角色（URL hash 分发，见 scroll-capture.ts / scroll.ts），
+         这里只是它的 DOM 宿主，位置与尺寸由主进程 setBounds 对齐 -->
+    <div id="minimap" class="minimap" hidden>
+      <canvas id="minimap-canvas"></canvas>
+      <span id="minimap-empty" class="minimap-empty">滚动内容会出现在这里</span>
+    </div>
     <script type="module" src="/src/scroll/scroll.ts"></script>
   </body>
 </html>
