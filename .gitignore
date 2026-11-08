@@ -90,3 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+
+# ZCode 工作区（会话计划等本地产物）
+.zcode/
