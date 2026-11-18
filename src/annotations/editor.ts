@@ -11,6 +11,7 @@ import {
   translateShape,
   withColor,
 } from './shapes';
+import { toolUsesWidth } from './toolbar';
 import type { ShapeHandle } from './shapes';
 import { HANDLE_CURSOR, HANDLE_HIT_DIP } from '../shared/selection';
 import type { HandleId } from '../shared/selection';
@@ -427,7 +428,9 @@ export class Editor {
   setWidth(width: number): void {
     this.width = width;
     this.onAttrsChange?.();
-    this.render();
+    // **不 render**：线宽在画布上没有现势表达（只影响下一笔），重绘只会
+    // 让宿主全量重画一遍 —— 滚轮调线宽的事件流（触板 60-120/s）挂着它
+    // 就是绘制笔画时的持续卡顿；滑杆拖动同理
   }
 
   private updateCursor(): void {
@@ -745,6 +748,42 @@ export class Editor {
     window.addEventListener('pointercancel', finish);
     // 窗口被主进程拖走时可能丢 pointerup，blur 兜底
     window.addEventListener('blur', finish);
+
+    canvas.addEventListener('wheel', (event) => this.onWheel(event), { passive: false });
+  }
+
+  /** 滚轮调线宽的步长累计：离散滚轮一格 ±100，触板的连续小步长攒够 100 走一步 */
+  private wheelAccum = 0;
+
+  /**
+   * 滚轮调线宽：吃线宽的工具上（与工具条滑杆同一份 `toolUsesWidth` 判定），
+   * 向上滚加粗、向下滚变细，实时经 onAttrsChange 回填滑杆。
+   *
+   * 接管时 preventDefault + stopPropagation —— 贴图编辑模式的缩放 / 透明度
+   * 挂在 window 层，canvas 先于 window 触发，拦在到达之前。**两类事件放行**：
+   * 不吃线宽的工具（含手型），以及带 Ctrl/Cmd 修饰的滚轮 —— 后者在贴图上
+   * 是既定的「调透明度」交互，不能被线宽劫持。
+   */
+  private onWheel(event: WheelEvent): void {
+    if (event.ctrlKey || event.metaKey) return;
+    if (!toolUsesWidth(this.current, this.mosaicMode)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.wheelAccum += event.deltaY;
+    while (Math.abs(this.wheelAccum) >= 100) {
+      // 向上滚（deltaY < 0）= 加粗；每步**按方向消费掉 100**——
+      // 消费符号写反会让 while 每圈越攒越多，一口气冲到 widthMax
+      const up = this.wheelAccum < 0;
+      const step = up ? 1 : -1;
+      this.wheelAccum += up ? 100 : -100;
+      const next = Math.min(this.widthMax, Math.max(this.widthMin, this.width + step));
+      if (next === this.width) {
+        // 已到边界：清掉累计，别让同方向的滚动攒着，反向滚时先「还债」
+        this.wheelAccum = 0;
+        break;
+      }
+      this.setWidth(next);
+    }
   }
 
   private tooSmall(shape: Shape): boolean {

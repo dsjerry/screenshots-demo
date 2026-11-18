@@ -103,6 +103,15 @@ const ROW2_BY_TOOL: Record<ToolId, string[]> = {
   counter: ['color'],
 };
 
+/**
+ * 该工具 / 马赛克模式下当前是否在展示线宽控制 —— 「滚轮调线宽」共用
+ * 这一份判定（编辑器据此决定要不要接管滚轮），别处别再复制这张表。
+ */
+export function toolUsesWidth(tool: ToolId, mosaicMode: MosaicMode): boolean {
+  // 涂抹模式下线宽是笔刷半径（选区模式没有笔刷，不展示也不接管）
+  return (ROW2_BY_TOOL[tool] ?? []).includes('width') || (tool === 'mosaic' && mosaicMode === 'brush');
+}
+
 /** 追加在历史组之后的动作按钮，由宿主提供。 */
 export interface ToolbarAction {
   id: string;
@@ -312,8 +321,7 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
   /** 行 2 按当前工具决定显示哪些属性分组 */
   function syncRow2(): void {
     const show = new Set(ROW2_BY_TOOL[editor.currentTool] ?? []);
-    // 涂抹下线宽是笔刷半径；选区模式没有笔刷，一并隐藏
-    if (editor.currentTool === 'mosaic' && editor.mosaicModeValue === 'brush') {
+    if (toolUsesWidth(editor.currentTool, editor.mosaicModeValue)) {
       show.add('width');
     }
     row2Groups.forEach((g, key) => {
@@ -346,6 +354,10 @@ export function createToolbar(container: HTMLElement, editor: Editor, opts: Tool
   };
   editor.onHistoryChange = syncHistory;
   syncHistory();
+
+  // 属性变化回填 UI（滑杆 / 数值 / 分组显隐）—— 滚轮调线宽、跨窗口笔刷
+  // 同步等不走滑杆 input 的路径都靠它跟显示保持一致
+  editor.onAttrsChange = syncActive;
 
   // ---------------- 快捷键 ----------------
   window.addEventListener('keydown', (event) => {
