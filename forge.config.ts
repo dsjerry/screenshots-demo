@@ -13,7 +13,7 @@ import path from 'node:path';
 // node-gyp / node-addon-api 只在安装期编译用，不进包。
 const INSTALL_ONLY_MODULES = new Set(['node-gyp', 'node-addon-api']);
 const RUNTIME_MODULES = (() => {
-  const wanted = new Set(['get-windows', 'koffi', 'electron-liquid-glass']);
+  const wanted = new Set(['get-windows', 'koffi', 'electron-liquid-glass', 'electron-snip']);
   const queue = [...wanted];
   while (queue.length > 0) {
     const name = queue.pop() as string;
@@ -55,7 +55,6 @@ const config: ForgeConfig = {
     // 都经 extraResource 直达 Contents/Resources，dev 下走仓库路径。
     // 源码与构建脚本在 repo 的 resources/ 下，被 ignore 排除、不进 asar。
     extraResource: [
-      './resources/window-probe',
       './resources/icons/app.png',
       './resources/icons/app-template.png',
       './resources/icons/app-template-inverse.png',
@@ -105,14 +104,6 @@ const config: ForgeConfig = {
         {
           name: 'main_window',
           config: 'vite.renderer.config.ts',
-        },
-        {
-          name: 'overlay',
-          config: 'vite.overlay.config.ts',
-        },
-        {
-          name: 'pin',
-          config: 'vite.pin.config.ts',
         },
         {
           name: 'scroll',

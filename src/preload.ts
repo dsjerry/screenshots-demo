@@ -12,27 +12,6 @@ function on<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const api: ScreenshotsApi = {
-  overlay: {
-    boot: () => ipcRenderer.invoke(CH.overlayBoot),
-    selection: (cb) => on(CH.overlaySelection, cb),
-    teardown: (cb) => on(CH.overlayTeardown, cb),
-    ready: () => ipcRenderer.invoke(CH.overlayReady),
-    input: (payload) => ipcRenderer.invoke(CH.overlayInput, payload),
-    tool: (payload) => ipcRenderer.invoke(CH.overlayTool, payload),
-    action: (payload) => ipcRenderer.invoke(CH.overlayAction, payload),
-    shapes: (payload) => ipcRenderer.invoke(CH.overlayShapes, payload),
-    draft: (payload) => ipcRenderer.invoke(CH.overlayDraft, payload),
-    inFlight: (payload) => ipcRenderer.invoke(CH.overlayInFlight, payload),
-    remoteShapes: (cb) => on(CH.overlayRemoteShapes, cb),
-    remoteDraft: (cb) => on(CH.overlayRemoteDraft, cb),
-    editState: (payload) => ipcRenderer.invoke(CH.overlayEditState, payload),
-    focus: () => ipcRenderer.invoke(CH.overlayFocus),
-    copyText: (payload) => ipcRenderer.invoke(CH.overlayCopyText, payload),
-    compose: (cb) => on(CH.overlayCompose, cb),
-    export: (payload) => ipcRenderer.invoke(CH.overlayExport, payload),
-    ocrResult: (cb) => on(CH.ocrResult, cb),
-    record: () => ipcRenderer.invoke(CH.overlayRecord),
-  },
   recorder: {
     frame: (cb) => on(CH.recordFrame, cb),
     status: (cb) => on(CH.recordStatus, cb),
@@ -47,11 +26,6 @@ const api: ScreenshotsApi = {
     timeline: () => ipcRenderer.invoke(CH.recordTimeline),
     format: (payload) => ipcRenderer.invoke(CH.recordAction, { kind: 'format', format: payload.format }),
     export: (payload) => ipcRenderer.invoke(CH.recordExport, payload),
-  },
-  pin: {
-    boot: () => ipcRenderer.invoke(CH.pinBoot),
-    ready: (payload) => ipcRenderer.invoke(CH.pinReady, payload),
-    action: (payload) => ipcRenderer.invoke(CH.pinAction, payload),
   },
   scroll: {
     frame: (cb) => on(CH.scrollFrame, cb),

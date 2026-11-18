@@ -259,15 +259,15 @@ export async function runAction(payload: { kind: HistoryActionKind; id: number }
       return;
     case 'save': {
       if (png.byteLength === 0) return;
-      // 惰性 import：pin-window 也惰性引用本模块（pushHistory），避免环
-      const { savePng, defaultSnipName } = await import('./pin-window');
+      // 惰性 import：export / snip 也引用本模块（pushHistory），避免环
+      const { savePng, defaultSnipName } = await import('./export');
       await savePng(null, new Uint8Array(png), defaultSnipName());
       return;
     }
     case 'pin': {
       if (png.byteLength === 0) return;
-      const { createPinFromImage } = await import('./pin-window');
-      await createPinFromImage(new Uint8Array(png), false);
+      const { getSnipper } = await import('./snip');
+      await getSnipper().pinImage(new Uint8Array(png));
       return;
     }
     case 'delete': {

@@ -4,14 +4,12 @@ import started from 'electron-squirrel-startup';
 import { CH } from './shared/channels';
 import { registerIpc } from './main-process/ipc';
 import { forwardRendererLogs } from './main-process/renderer-log';
-import { beginSnip, cancelSnip } from './main-process/snip-session';
+import { beginSnip, cancelSnip, ensureScreenAccess, getSnipper, initSnip } from './main-process/snip';
 import { cancelRecording } from './main-process/record-capture';
 import { createTray, destroyTray, getTrayBounds } from './main-process/tray';
 import { hideHudCatchers, setHudDismissCallback, showHudCatchers } from './main-process/hud-catcher';
 import { getSettings } from './main-process/settings';
 import { applyHistoryRetention, openHistoryWindow } from './main-process/history';
-import { closeAllPins, setPinsMouseIgnore } from './main-process/pin-window';
-import { ensureScreenCaptureAccess } from './main-process/screen-permission';
 
 // macOS：纯菜单栏应用（Shottr 形态）—— 无 Dock 图标、不占 Cmd+Tab。
 // 必须在 ready 之前声明 accessory：ready（didFinishLaunching）之后再调
@@ -346,6 +344,12 @@ function broadcastAppState(snipping: boolean): void {
   mainWindow.webContents.send(CH.appState, { snipping });
 }
 
+function focusMainWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.focus();
+  }
+}
+
 /** 当前生效的全局快捷键（accelerator 字符串） */
 let currentHotkey = '';
 
@@ -382,14 +386,13 @@ app.whenReady().then(async () => {
   // 面板打开期间铺透明点击盾（见 hud-catcher.ts），盾上点击 → 收起面板
   setHudDismissCallback(() => hideMainWindow());
 
-  registerIpc({
+  await initSnip({
     isMainWindow: (win) => win === mainWindow,
     broadcastAppState,
-    focusMainWindow: () => {
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
-        mainWindow.focus();
-      }
-    },
+    focusMainWindow,
+  });
+
+  registerIpc({
     applyHotkey,
     applyGlassTransparency: (transparency) => {
       if (process.platform !== 'darwin' || !mainWindow || mainWindow.isDestroyed() || !mainWindowReady) return;
@@ -407,8 +410,8 @@ app.whenReady().then(async () => {
     onShowMain: () => showMainWindow(),
     onToggleMain: () => toggleMainWindow(),
     onHistory: () => openHistoryWindow(),
-    onCloseAllPins: () => closeAllPins(),
-    onRestorePins: () => setPinsMouseIgnore(false),
+    onCloseAllPins: () => getSnipper().closePins(),
+    onRestorePins: () => getSnipper().setPinsMouseIgnore(false),
     onAbout: () => showAbout(),
     getMainWindow: () => mainWindow,
   });
@@ -423,7 +426,7 @@ app.whenReady().then(async () => {
   }
 
   // macOS 没有「屏幕录制」权限时启动即引导授权，别等第一次截图截出壁纸才失败
-  void ensureScreenCaptureAccess();
+  void ensureScreenAccess();
 });
 
 app.on('before-quit', () => {
