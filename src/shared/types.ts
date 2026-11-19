@@ -1,5 +1,3 @@
-import type { PinPadding } from './pin-layout';
-
 /** 与方向无关的点，单位一律是虚拟屏 DIP（可为负）。 */
 export interface Point {
   x: number;
@@ -180,7 +178,7 @@ export interface PinInitPayload {
   dipWidth: number;
   dipHeight: number;
   /** 窗口四边的阴影留白（DIP）：渲染进程据此让开画布位置，好让阴影露出来 */
-  padding: PinPadding;
+  padding: { top: number; right: number; bottom: number; left: number };
   /**
    * 遮罩阶段画的标注，**已换算成图像像素**（各屏本屏 DIP → 选区坐标 × outScale）。
    * 钉图 seed 进编辑器后继续可编辑。

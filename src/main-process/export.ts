@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { toBlob } from '../shared/bytes';
+import { toBlob } from 'electron-snip/utils';
 import type { SaveFormat } from '../shared/types';
 import { getSettings } from './settings';
 

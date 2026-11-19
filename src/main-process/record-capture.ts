@@ -1,11 +1,11 @@
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, screen } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { captureDisplays } from './capture';
+import { captureDisplays } from 'electron-snip';
 import { forwardRendererLogs } from './renderer-log';
 import { getSettings } from './settings';
 import { CH } from '../shared/channels';
-import { toBlob } from '../shared/bytes';
+import { toBlob } from 'electron-snip/utils';
 import type {
   DisplayShot,
   Point,
@@ -275,7 +275,7 @@ async function grabFrame(): Promise<void> {
   try {
     const d = screen.getAllDisplays().find((x) => x.id === s.displayId);
     if (!d) throw new Error('显示器已断开');
-    const [shot] = await captureDisplays([d], { silent: true });
+    const [shot] = await captureDisplays([d], screen.getAllDisplays(), true);
     if (state !== s) return;
     await pushFrame(shot);
   } catch (err) {

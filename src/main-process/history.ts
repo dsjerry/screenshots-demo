@@ -1,7 +1,7 @@
 import { clipboard, nativeImage, BrowserWindow, app } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { toBlob } from '../shared/bytes';
+import { toBlob } from 'electron-snip/utils';
 import { forwardRendererLogs } from './renderer-log';
 import { getSettings } from './settings';
 import type { HistoryActionKind, HistoryEntryInfo } from '../shared/types';

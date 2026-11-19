@@ -1,9 +1,9 @@
 import { BrowserWindow, screen } from 'electron';
 import type { WebContents } from 'electron';
 import path from 'node:path';
-import { captureDisplays } from './capture';
+import { captureDisplays } from 'electron-snip';
 import { forwardRendererLogs } from './renderer-log';
-import { pointInRect } from '../shared/selection';
+import { pointInRect } from 'electron-snip/utils';
 import { CH } from '../shared/channels';
 import type { DisplayShot, Rect, ScrollFramePayload, ScrollMinimapPayload, ScrollSpeed } from '../shared/types';
 
@@ -302,7 +302,7 @@ async function grabFrame(): Promise<void> {
   try {
     const d = screen.getAllDisplays().find((x) => x.id === s.displayId);
     if (!d) throw new Error('显示器已断开');
-    const [shot] = await captureDisplays([d], { silent: true });
+    const [shot] = await captureDisplays([d], screen.getAllDisplays(), true);
     const frame = cropShot(shot, s.region);
     if (s.bar.isDestroyed()) return;
     s.bar.webContents.send(CH.scrollFrame, frame);

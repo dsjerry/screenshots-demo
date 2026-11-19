@@ -1,5 +1,5 @@
 import type { ScrollFramePayload, ScrollSpeed } from '../shared/types';
-import { toClamped } from '../shared/bytes';
+import { toClamped } from 'electron-snip/utils';
 
 /**
  * 滚动截长图的拼接器（控制条渲染进程）。

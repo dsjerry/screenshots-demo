@@ -1,7 +1,7 @@
 import { createToolbar, drawShape, Editor } from 'electron-snip/annotations';
 import type { ToolbarAction } from 'electron-snip/annotations';
 import 'electron-snip/annotations.css';
-import { toClamped } from '../shared/bytes';
+import { toClamped } from 'electron-snip/utils';
 import { encodeGif } from '../shared/gif';
 import { dedupeFrames, quantize } from './quantize';
 import type {
