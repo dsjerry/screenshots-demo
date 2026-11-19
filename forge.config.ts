@@ -7,44 +7,11 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import path from 'node:path';
+import { inRuntimeClosure, runtimePrefixes } from './scripts/runtime-closure';
 
-// 原生模块已在 vite.main.config 外部化，打包时必须以文件形式随 app
-// 发布 —— 这里从真实 node_modules 算出它们的运行时依赖闭包。
-// node-gyp / node-addon-api 只在安装期编译用，不进包。
-const INSTALL_ONLY_MODULES = new Set(['node-gyp', 'node-addon-api']);
-const RUNTIME_MODULES = (() => {
-  const wanted = new Set(['get-windows', 'koffi', 'electron-liquid-glass', 'electron-snip']);
-  const queue = [...wanted];
-  while (queue.length > 0) {
-    const name = queue.pop() as string;
-    let pj: { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> };
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      pj = require(path.join(process.cwd(), 'node_modules', name, 'package.json'));
-    } catch {
-      continue;
-    }
-    const deps = [...Object.keys(pj.dependencies ?? {}), ...Object.keys(pj.optionalDependencies ?? {})];
-    for (const dep of deps) {
-      if (!wanted.has(dep) && !INSTALL_ONLY_MODULES.has(dep)) {
-        wanted.add(dep);
-        queue.push(dep);
-      }
-    }
-  }
-  return [...wanted];
-})();
-
-/** 白名单模块的完整路径前缀（带尾斜杠） */
-const RUNTIME_PREFIXES = RUNTIME_MODULES.map((m) => `/node_modules/${m}/`);
-/**
- * 是否属于运行时闭包：文件落在白名单模块内，**或是通往白名单模块的
- * 祖先目录**（`/node_modules`、`/node_modules/@koromix` 这类目录本身
- * 不在白名单前缀里，不判祖先的话整个目录在下钻前就被跳过）。
- */
-function inRuntimeClosure(file: string): boolean {
-  return RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix) || prefix.startsWith(`${file}/`));
-}
+// 原生模块已在 vite.main.config 外部化，打包时必须以文件形式随 app 发布。
+// 闭包按 Node 规则逐级解析（见 scripts/runtime-closure.ts），嵌套安装的副本也会收集。
+const RUNTIME_PREFIXES = runtimePrefixes(__dirname, ['get-windows', 'koffi', 'electron-liquid-glass', 'electron-snip']);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -70,7 +37,7 @@ const config: ForgeConfig = {
       // 打进 bundle），接管后自行放行：.vite、包清单、运行时依赖闭包
       if (file.startsWith('/.vite') || file === '/package.json') return false;
       if (file === '/node_modules' || file.startsWith('/node_modules/')) {
-        return !inRuntimeClosure(file);
+        return !inRuntimeClosure(file, RUNTIME_PREFIXES);
       }
       return true;
     },
