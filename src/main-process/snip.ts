@@ -10,6 +10,7 @@ import { copyPng, savePng, defaultSnipName } from './export';
 import { getSettings } from './settings';
 import { cancelRecording, isRecording, startRecording } from './record-capture';
 import {
+  beginScrollCapture,
   cropShot,
   setAutoScrollSpeed,
   startAutoScroll,
@@ -174,6 +175,9 @@ function runRecord(ctx: SnipActionContext): void {
 /** 长图控制条（scroll.html）的动作：自动 / 手动滚动、到底、编辑、复制 / 保存 / 取消。 */
 export async function onScrollAction(_sender: WebContents, payload: ScrollActionPayload): Promise<void> {
   switch (payload.kind) {
+    case 'start':
+      beginScrollCapture();
+      return;
     case 'auto':
       await startAutoScroll();
       return;

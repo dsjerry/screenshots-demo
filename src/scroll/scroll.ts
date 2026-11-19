@@ -40,12 +40,8 @@ const PROBE_ROWS = 24;
 const BOTTOM_MARGIN = 200;
 /** 连续这么久没新内容就提示可以收手了（不自动停，用户可能只是暂停） */
 const IDLE_HINT_FRAMES = 8;
-/** 探针连续失配这么多帧后，改用「帧顶行」在累积缓冲里重同步 ——
- *  滚动过快（一帧滚过近整屏）时探针内容可能已滚出视口，帧顶行通常
- *  仍能在累积缓冲里找到对位；找不到说明出了真正的空档，只能丢帧提示 */
-const DESYNC_RESYNC_FRAMES = 2;
-/** 帧顶重同步的锚行数 */
-const TOP_ANCHOR_ROWS = 6;
+/** 探针连续失配这么多帧后提示用户放慢。失配的帧一律丢弃，不追加任何内容 */
+const DESYNC_HINT_FRAMES = 2;
 
 /** 当前探针失配的连续帧数（成功追加或完美对齐都会清零） */
 let desyncFrames = 0;
@@ -99,6 +95,16 @@ function startBar(): void {
 
   const modeManualBtn = document.getElementById('mode-manual') as HTMLButtonElement;
   const modeAutoBtn = document.getElementById('mode-auto') as HTMLButtonElement;
+  const startBtn = document.getElementById('start') as HTMLButtonElement;
+  const speedEl = document.getElementById('speed') as HTMLButtonElement;
+  // 确认开始之前不允许切换滚动方式（否则自动模式会在用户还没准备好时就开始注入）
+  for (const el of [modeManualBtn, modeAutoBtn, speedEl]) el.disabled = true;
+  startBtn.addEventListener('click', () => {
+    startBtn.hidden = true;
+    for (const el of [modeManualBtn, modeAutoBtn, speedEl]) el.disabled = false;
+    hintEl.textContent = HINT_DEFAULT;
+    void window.api.scroll.action({ kind: 'start' }).catch(() => {});
+  });
 
   /** 切换滚动方式；主进程负责注入 / 停止（manual 停掉进行中的自动滚动） */
   function setMode(next: 'manual' | 'auto'): void {
@@ -146,7 +152,7 @@ function startBar(): void {
     hintEl.textContent =
       mode === 'auto' && bottomNotified
         ? HINT_BOTTOM
-        : desyncFrames >= DESYNC_RESYNC_FRAMES
+        : desyncFrames >= DESYNC_HINT_FRAMES
           ? HINT_DESYNC
           : idleFrames >= IDLE_HINT_FRAMES
             ? HINT_IDLE
@@ -336,33 +342,6 @@ function startBar(): void {
     acc.height += count;
   }
 
-  /**
-   * 帧顶 TOP_ANCHOR_ROWS 行在累积缓冲里的最佳对位（行签名）。
-   * 探针失配后的重同步手段：探针内容已滚出视口时，帧顶行通常还能在
-   * 累积缓冲里找到；返回 -1 = 找不到（真空档，只能丢帧）。
-   */
-  function topAnchorInAcc(stripSigs: Float32Array[]): number {
-    if (!acc) return -1;
-    const limit = acc.height - TOP_ANCHOR_ROWS;
-    if (limit < 0) return -1;
-    let best = -1;
-    let bestDiff = Infinity;
-    for (let a = 0; a <= limit; a++) {
-      let sum = 0;
-      for (let r = 0; r < TOP_ANCHOR_ROWS; r++) {
-        const x = acc.sigs[a + r];
-        const y = stripSigs[r];
-        for (let c = 0; c < SIG_COLS; c++) sum += Math.abs(x[c] - y[c]);
-      }
-      const d = sum / (TOP_ANCHOR_ROWS * SIG_COLS);
-      if (d < bestDiff) {
-        bestDiff = d;
-        best = a;
-      }
-    }
-    return bestDiff <= MATCH_THRESHOLD ? best : -1;
-  }
-
   window.api.scroll.frame((frame: ScrollFramePayload) => {
     const strip = new Uint8ClampedArray(frame.pixels);
     const { width, height } = frame;
@@ -436,25 +415,9 @@ function startBar(): void {
     const appendStart = bestT + (acc!.height - pStart);
     const newRows = height - appendStart;
     if (best > MATCH_THRESHOLD) {
-      // 探针没对上 —— 滚动过快时探针内容可能已滚出视口。连续两帧后改用
-      // 帧顶行在累积缓冲里重同步：找得到就无缝续接；找不到说明两帧之间
-      // 出现了真实空档（内容跳过去了），只能丢帧并提示放慢
+      // 探针没对上：本帧丢弃，不追加任何内容（重同步追加会把已有段落再写一遍，
+      // 造成重复）。连续失配时提示用户放慢，滚动恢复对齐后会自动续接
       desyncFrames++;
-      if (desyncFrames >= DESYNC_RESYNC_FRAMES) {
-        const a = topAnchorInAcc(stripSigs);
-        const start = a >= 0 ? acc!.height - a : -1;
-        const rows = height - start;
-        if (a >= 0 && rows > 0) {
-          appendStrip(strip, start, rows);
-          // 重同步的对位：帧顶行 = acc 的 a 行，即当前视口顶
-          viewTop = a;
-          viewHeight = height;
-          idleFrames = 0;
-          desyncFrames = 0;
-          bottomNotified = false;
-          resumeAutoIfNeeded();
-        }
-      }
       updateStatus();
       return;
     }

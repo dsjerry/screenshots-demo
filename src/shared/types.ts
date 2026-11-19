@@ -127,7 +127,7 @@ export interface ScrollFramePayload {
 export type ScrollSpeed = 'slow' | 'normal' | 'fast';
 
 export interface ScrollActionPayload {
-  kind: 'copy' | 'save' | 'cancel' | 'auto' | 'manual' | 'bottom' | 'edit' | 'speed';
+  kind: 'copy' | 'save' | 'cancel' | 'start' | 'auto' | 'manual' | 'bottom' | 'edit' | 'speed';
   png?: Uint8Array;
   speed?: ScrollSpeed;
 }

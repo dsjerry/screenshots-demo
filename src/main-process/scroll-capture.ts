@@ -37,7 +37,8 @@ interface ScrollState {
   outline: BrowserWindow;
   /** 小地图窗口；选区两侧都放不下时为 null（不视为错误） */
   minimap: BrowserWindow | null;
-  timer: NodeJS.Timeout;
+  /** 抓帧定时器：用户点「开始」后才创建，点「长图」只进入准备状态 */
+  timer: NodeJS.Timeout | null;
   displayId: number;
   region: Rect;
   /** 控制条位置（虚拟屏 DIP）—— 自动滚动注入的豁免区 */
@@ -117,12 +118,11 @@ export function startScrollCapture(shot: DisplayShot, region: Rect): boolean {
   const mapRect = minimapBounds(region, d.bounds);
   const minimap = mapRect ? ensureMinimapWindow(mapRect) : null;
 
-  const timer = setInterval(() => void grabFrame(), FRAME_INTERVAL_MS);
   state = {
     bar,
     outline,
     minimap,
-    timer,
+    timer: null,
     displayId: shot.displayId,
     region,
     barBounds: barRect,
@@ -151,13 +151,25 @@ export function startScrollCapture(shot: DisplayShot, region: Rect): boolean {
   return true;
 }
 
+/**
+ * 用户确认开始后才开始抓帧。点「长图」只打开控制条、不滚动、不抓帧 ——
+ * 否则用户还没准备好就已经在拼接（甚至自动滚动），拼出来的内容不可控。
+ */
+export function beginScrollCapture(): boolean {
+  const s = state;
+  if (!s || s.timer) return false;
+  s.timer = setInterval(() => void grabFrame(), FRAME_INTERVAL_MS);
+  console.log('[scroll] 开始抓帧');
+  return true;
+}
+
 /** 收起滚动捕获（窗口销毁 + 帧循环停止）。幂等。 */
 export function stopScrollCapture(): void {
   stopAutoScroll();
   const s = state;
   if (!s) return;
   state = null;
-  clearInterval(s.timer);
+  if (s.timer) clearInterval(s.timer);
   for (const win of [s.bar, s.outline, s.minimap]) {
     if (win && !win.isDestroyed()) win.destroy();
   }

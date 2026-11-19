@@ -143,3 +143,13 @@ body {
   font-size: 11px;
   line-height: 1.6;
 }
+
+.modes button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.actions button.is-primary {
+  color: #fff;
+  background: var(--accent, #2f6fed);
+}
