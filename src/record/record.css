@@ -1,3 +1,8 @@
+/* 隐藏属性必须压过组件自己的 display（如 .bar 的 flex），否则标注层里控制条会被错误地显示出来 */
+[hidden] {
+  display: none !important;
+}
+
 /* 录制控制条：与长图控制条同一套磨砂玻璃语言（半透明 + 圆角 + 小投影）。
    窗口本体比可视区大 8px（body padding），给圆角与投影留呼吸空间；
    整条是系统拖拽区，按钮显式退出（见 .actions button）。 */

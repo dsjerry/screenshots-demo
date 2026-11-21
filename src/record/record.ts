@@ -68,10 +68,6 @@ function fmt(ms: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-if (ROLE === 'ink') startInkLayer();
-else if (ROLE === 'toolbar') startToolbarWindow();
-else startBar();
-
 // ============================================================== 标注层窗口
 
 /**
@@ -576,3 +572,9 @@ function startToolbarWindow(): void {
   // 默认手型在录制里没有意义（无窗口可拖），落成画笔，一并把初值推给标注层
   brush.setTool('pen');
 }
+
+// 角色分发放在文件末尾：各角色用到的 const（如 RECORD_TOOLS）声明在上面的代码之后，
+// 提前调用会踩到暂时性死区（ReferenceError），工具条窗口因此整块启动失败。
+if (ROLE === 'ink') startInkLayer();
+else if (ROLE === 'toolbar') startToolbarWindow();
+else startBar();
