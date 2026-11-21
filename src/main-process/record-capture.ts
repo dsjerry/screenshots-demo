@@ -61,10 +61,20 @@ export interface RecordSessionOptions {
   format: RecordFormat;
   sourceApp?: string;
   /**
-   * 控制条被系统关闭时的收尾（截图会话用来放回被隐藏的自家窗口）。
-   * 「停止 → 导出」不走这里：那条路径由会话自己收场。
+   * 录制整体结束时回调一次：取消，或控制条被系统关闭。宿主在这里释放自己的会话
+   * （截图会话里是 `snipper.release()`，用来放回被隐藏的窗口）。
+   * 「停止 → 导出」不算结束：导出后面板仍可再次保存，关闭面板才结束。
    */
-  onClosed?: () => void;
+  onEnd?: () => void;
+}
+
+/** 本次录制的结束回调，只触发一次（取消与控制条关闭共用）。 */
+let endHook: (() => void) | null = null;
+
+function fireEndHook(): void {
+  const hook = endHook;
+  endHook = null;
+  hook?.();
 }
 
 interface RecorderState {
@@ -175,6 +185,7 @@ export function startRecording(opts: RecordSessionOptions): boolean {
     inking: false,
   };
   barReady = false;
+  endHook = opts.onEnd ?? null;
 
   bar.on('closed', () => {
     if (state?.bar !== bar) return;
@@ -187,7 +198,7 @@ export function startRecording(opts: RecordSessionOptions): boolean {
     destroyToolbarWindow();
     state = null;
     barReady = false;
-    opts.onClosed?.();
+    fireEndHook();
   });
 
   void loadRecordBar(bar)
@@ -234,6 +245,7 @@ export function cancelRecording(): void {
   destroyInkWindow();
   destroyToolbarWindow();
   console.log(`[record] 录制已取消 frames=${s.frames}`);
+  fireEndHook();
 }
 
 /** 当前录制状态（推给控制条，也用于主进程日志） */

@@ -8,7 +8,6 @@ import { recognizeImagePng } from 'electron-snip/ocr';
 import { cropShot } from 'electron-snip/utils';
 import scanTextSvg from 'lucide-static/icons/scan-text.svg?raw';
 import galleryVerticalSvg from 'lucide-static/icons/gallery-vertical.svg?raw';
-import videoSvg from 'lucide-static/icons/video.svg?raw';
 import { copyPng, savePng, defaultSnipName } from './export';
 import { getSettings } from './settings';
 import { cancelRecording, isRecording, startRecording } from './record-capture';
@@ -175,30 +174,32 @@ async function runOcr(ctx: SnipActionContext): Promise<void> {
 
 // ---------------------------------------------------------------- 录屏（应用内实现）
 
-/** 录制：只录单屏内的选区。 */
-function runRecord(ctx: SnipActionContext): void {
-  const pick = ctx.pickSingleDisplay();
-  if (!pick) {
-    console.warn('[record] 选区无法落在单块屏内，录制未启动');
-    return;
-  }
+// ---------------------------------------------------------------- 录制（框选后移交）
+
+/**
+ * 录制入口：框选后不进工具条，确认选区直接开始录制（托盘「录制」触发）。
+ * 录制结束（取消或控制条被关）时释放移交的会话，恢复被隐藏的窗口。
+ */
+export function startRecordFlow(): void {
   if (isRecording()) {
-    console.warn('[record] 已在录制中');
+    console.warn('[record] 已在录制中，忽略新的录制请求');
     return;
   }
-  ctx.hideOverlays();
-  const ok = startRecording({
-    shot: pick.shot,
-    region: pick.region,
-    format: 'png-sequence',
-    sourceApp: ctx.sourceApp,
-    // 控制条被系统关掉（Alt+F4）：收场，恢复被隐藏的窗口
-    onClosed: () => getSnipper().cancel('record-closed'),
+  getSnipper().pick({
+    onPick({ shot, region, sourceApp }) {
+      const ok = startRecording({
+        shot,
+        region,
+        format: 'png-sequence',
+        sourceApp,
+        onEnd: () => getSnipper().release(),
+      });
+      if (!ok) {
+        console.warn('[record] 启动失败，结束移交');
+        getSnipper().release();
+      }
+    },
   });
-  if (!ok) {
-    console.warn('[record] 启动失败，回到框选');
-    void getSnipper().start();
-  }
 }
 
 // ---------------------------------------------------------------- 动作注册
@@ -207,6 +208,5 @@ function hostActions(): SnipAction[] {
   return [
     { id: 'ocr', label: '提取文字', icon: scanTextSvg, run: runOcr },
     { id: 'scroll', label: '长图', icon: galleryVerticalSvg, run: runScroll },
-    { id: 'record', label: '录制', icon: videoSvg, run: runRecord },
   ];
 }

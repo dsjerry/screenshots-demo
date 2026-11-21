@@ -4,7 +4,7 @@ import started from 'electron-squirrel-startup';
 import { CH } from './shared/channels';
 import { registerIpc } from './main-process/ipc';
 import { forwardRendererLogs } from './main-process/renderer-log';
-import { beginSnip, cancelSnip, ensureScreenAccess, getSnipper, initSnip } from './main-process/snip';
+import { beginSnip, cancelSnip, ensureScreenAccess, getSnipper, initSnip, startRecordFlow } from './main-process/snip';
 import { cancelRecording } from './main-process/record-capture';
 import { createTray, destroyTray, getTrayBounds } from './main-process/tray';
 import { hideHudCatchers, setHudDismissCallback, showHudCatchers } from './main-process/hud-catcher';
@@ -407,6 +407,7 @@ app.whenReady().then(async () => {
     onSnipDelay: (ms) => {
       setTimeout(() => void beginSnip(), ms);
     },
+    onRecord: () => startRecordFlow(),
     onShowMain: () => showMainWindow(),
     onToggleMain: () => toggleMainWindow(),
     onHistory: () => openHistoryWindow(),

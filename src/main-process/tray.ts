@@ -142,6 +142,8 @@ export interface TrayCallbacks {
   onSnip(): void;
   /** 延迟 N 毫秒后触发截图 */
   onSnipDelay(ms: number): void;
+  /** 录制：框选后移交录制流程 */
+  onRecord(): void;
   onShowMain(): void;
   /** 托盘左键：主窗口显示 / 隐藏开关 */
   onToggleMain(): void;
@@ -172,6 +174,7 @@ export function createTray(cb: TrayCallbacks): Tray {
   const menu = Menu.buildFromTemplate([
     { label: '截图', click: () => cb.onSnip() },
     { label: '5 秒后截图', click: () => cb.onSnipDelay(5000) },
+    { label: '录制', click: () => cb.onRecord() },
     { type: 'separator' },
     { label: '截图历史', click: () => cb.onHistory() },
     { label: '收起全部贴图', click: () => cb.onCloseAllPins() },
