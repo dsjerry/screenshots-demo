@@ -24,7 +24,7 @@
 
 Electron + TypeScript + Vite（Forge 插件）的跨屏截图工具，托盘常驻、多窗口架构：
 一个 preload + 五个渲染入口 —— `main`（HUD 控制面板）/ `overlay`（每屏一个截图遮罩）/ `pin`（贴图）/
-`scroll`（长图控制条）/ `history`（历史窗口）。标注引擎（`src/annotations/`）在遮罩 / 贴图间复用；
+`history`（历史窗口）。标注引擎（`src/annotations/`）在遮罩 / 贴图间复用；
 类型与 IPC 通道契约集中在 `src/shared/`。
 深度文档在 `docs/`（`architecture.md` / `electron-api.md` / `macos-permission.md`），改动前先查对应篇目。
 

@@ -27,12 +27,6 @@ const api: ScreenshotsApi = {
     format: (payload) => ipcRenderer.invoke(CH.recordAction, { kind: 'format', format: payload.format }),
     export: (payload) => ipcRenderer.invoke(CH.recordExport, payload),
   },
-  scroll: {
-    frame: (cb) => on(CH.scrollFrame, cb),
-    action: (payload) => ipcRenderer.invoke(CH.scrollAction, payload),
-    minimap: (payload) => ipcRenderer.invoke(CH.scrollMinimap, payload),
-    minimapData: (cb) => on(CH.scrollMinimap, cb),
-  },
   history: {
     boot: () => ipcRenderer.invoke(CH.historyBoot),
     thumb: (id) => ipcRenderer.invoke(CH.historyThumb, id),

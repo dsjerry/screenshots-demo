@@ -49,7 +49,7 @@ export interface OverlayInitPayload {
  * - `scrolling`：滚动截长图 —— 遮罩已收起，由滚动截图专用窗口接管
  * - `recording`：录屏 —— 遮罩已收起，由录制控制条接管
  */
-export type SnipPhase = 'selecting' | 'adjusting' | 'confirming' | 'scrolling' | 'recording';
+export type SnipPhase = 'selecting' | 'adjusting' | 'confirming' | 'recording';
 
 export interface OverlaySelectionPayload {
   /** 虚拟屏 DIP；null 表示尚未产生选区 */
@@ -79,7 +79,7 @@ export interface OverlaySelectionPayload {
  * - `record` 进入录屏（遮罩收起，由录制控制条接管）
  * - `cancel` 取消
  */
-export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'scroll' | 'ocr' | 'record';
+export type OverlayActionKind = 'pin' | 'cancel' | 'copy' | 'save' | 'ocr' | 'record';
 
 /** 遮罩就地合成导出所需的数据（主进程推给宿主遮罩）。 */
 export interface OverlayComposePayload {
@@ -104,45 +104,6 @@ export type OverlayInput =
 
 export interface OverlayTeardownPayload {
   reason: 'confirm' | 'cancel';
-}
-
-/**
- * 滚动截长图的单帧：已按选区裁好的原始 RGBA 条带，
- * 主进程按固定间隔抓屏裁剪后推给控制条渲染进程拼接。
- */
-export interface ScrollFramePayload {
-  pixels: Uint8Array;
-  width: number;
-  height: number;
-}
-
-/**
- * 滚动截图控制条的动作：
- * - `auto` / `manual` 切换滚动方式（自动 = 主进程注入滚轮）
- * - `speed` 切换自动滚动速度（speed 字段）
- * - `bottom` 自动模式下渲染端判定已到底，主进程停止注入
- * - `edit` 把拼接好的长图送进贴图编辑模式
- * - `copy` / `save` 随带拼接完成的 PNG 结束；`cancel` 收场
- */
-export type ScrollSpeed = 'slow' | 'normal' | 'fast';
-
-export interface ScrollActionPayload {
-  kind: 'copy' | 'save' | 'cancel' | 'start' | 'auto' | 'manual' | 'bottom' | 'edit' | 'speed';
-  png?: Uint8Array;
-  speed?: ScrollSpeed;
-}
-
-/**
- * 滚动小地图快照：控制条把累积缓冲的缩略图（PNG）与当前视口框位置
- * 推给主进程，转发给小地图窗口。快照无状态 —— 小地图晚加载丢早包
- * 无影响，下一拍自然补上。
- * `viewTop` / `viewHeight` 是**缩略图像素行号**（发送端已按缩放比折算，
- * 接收端对 png 高度线性映射即可）。
- */
-export interface ScrollMinimapPayload {
-  png: Uint8Array;
-  viewTop: number;
-  viewHeight: number;
 }
 
 /**

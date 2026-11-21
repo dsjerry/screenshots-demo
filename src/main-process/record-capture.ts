@@ -25,7 +25,7 @@ import type {
 /**
  * 录屏 / GIF 录制。
  *
- * 与滚动截长图（`scroll-capture.ts`）的分工一致：**主进程只负责节奏与裁剪**，
+ * 与长图（electron-snip/scroll）的分工一致：**主进程只负责节奏与裁剪**，
  * 重活（调色板量化、编码、合成标注）在控制条的渲染进程里做 —— 主进程是
  * 所有窗口的事件循环所在，一帧编码卡住会让整个应用（含遮罩、托盘）一起停顿。
  *
@@ -307,7 +307,7 @@ async function pushFrame(shot: DisplayShot): Promise<void> {
 /**
  * 按选区裁出物理像素帧（行拷贝，源是整屏 RGBA 位图）。
  *
- * 与 `scroll-capture.cropShot` 同样的做法：先四舍五入各条边再相减，
+ * 与 electron-snip 的 `cropShot` 同样的做法：先四舍五入各条边再相减，
  * 保证相邻帧的边界落在同一整数上（换帧时不抖）。
  */
 export function cropShot(shot: DisplayShot, region: Rect): { pixels: Uint8Array; width: number; height: number } {

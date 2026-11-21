@@ -18,10 +18,6 @@ export const CH = {
   recordClick: 'record:click',
   recordTimeline: 'record:timeline',
 
-  scrollFrame: 'scroll:frame',
-  scrollAction: 'scroll:action',
-  scrollMinimap: 'scroll:minimap',
-
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   settingsPickDir: 'settings:pickDir',

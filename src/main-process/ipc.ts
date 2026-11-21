@@ -7,15 +7,12 @@ import type {
   RecordClickPayload,
   RecordExportPayload,
   HistoryActionKind,
-  ScrollActionPayload,
-  ScrollMinimapPayload,
   SettingsPatch,
   Shape,
 } from '../shared/types';
 import { getSettings, setSettings } from './settings';
 import * as history from './history';
-import { beginSnip, getSnipper, onScrollAction } from './snip';
-import { onScrollMinimap } from './scroll-capture';
+import { beginSnip, getSnipper, installScrollAction } from './snip';
 import {
   onRecordAction,
   onRecordClick,
@@ -35,6 +32,7 @@ export interface AppContext {
 
 export function registerIpc(ctx: AppContext): void {
   getSnipper().install(ipcMain);
+  installScrollAction(ipcMain);
 
   // ---------------------------------------------------------- 应用设置
   ipcMain.handle(CH.settingsGet, () => getSettings());
@@ -94,6 +92,4 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(CH.recordExport, (_event, payload: RecordExportPayload) => onRecordExport(payload));
 
   // -------------------------------------------------------- 滚动截长图
-  ipcMain.handle(CH.scrollAction, (event, payload: ScrollActionPayload) => onScrollAction(event.sender, payload));
-  ipcMain.handle(CH.scrollMinimap, (event, payload: ScrollMinimapPayload) => onScrollMinimap(event.sender, payload));
 }

@@ -73,10 +73,6 @@ const config: ForgeConfig = {
           config: 'vite.renderer.config.ts',
         },
         {
-          name: 'scroll',
-          config: 'vite.scroll.config.ts',
-        },
-        {
           name: 'history',
           config: 'vite.history.config.ts',
         },

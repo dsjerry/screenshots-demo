@@ -1,27 +1,22 @@
 import { nativeImage } from 'electron';
-import type { WebContents } from 'electron';
+import type { IpcMain } from 'electron';
 import path from 'node:path';
 import type { SnipAction, SnipActionContext, SnipExportEvent, Snipper } from 'electron-snip';
+import { installScroll, startScrollCapture, stopScrollCapture } from 'electron-snip/scroll';
+import type { ScrollFinish } from 'electron-snip/scroll';
+import { recognizeImagePng } from 'electron-snip/ocr';
+import { cropShot } from 'electron-snip/utils';
 import scanTextSvg from 'lucide-static/icons/scan-text.svg?raw';
 import galleryVerticalSvg from 'lucide-static/icons/gallery-vertical.svg?raw';
 import videoSvg from 'lucide-static/icons/video.svg?raw';
-import type { ScrollActionPayload } from '../shared/types';
 import { copyPng, savePng, defaultSnipName } from './export';
 import { getSettings } from './settings';
 import { cancelRecording, isRecording, startRecording } from './record-capture';
-import {
-  beginScrollCapture,
-  cropShot,
-  setAutoScrollSpeed,
-  startAutoScroll,
-  startScrollCapture,
-  stopAutoScroll,
-  stopScrollCapture,
-} from './scroll-capture';
 
 /**
  * 截图模块的应用侧适配：初始化 electron-snip，并把长图 / 录屏 / OCR 注册为它的动作。
- * 包只管截图与标注；这三项依赖应用自己的模块（滚动拼接、录制、系统 OCR、历史），留在这里。
+ * 长图与 OCR 的实现来自 electron-snip 子路径；录屏仍在应用内（带标注与点击涟漪，包里尚未提供）。
+ * 复制 / 保存 / 历史写入 / 贴图这类应用策略留在这里。
  */
 
 export interface SnipHostHooks {
@@ -59,6 +54,11 @@ export function getSnipper(): Snipper {
   return snipper;
 }
 
+/** 注册长图控制条的 IPC 通道（由 electron-snip/scroll 处理，导出结果回到这里决定去向）。 */
+export function installScrollAction(ipcMain: IpcMain): () => void {
+  return installScroll(ipcMain, scrollHooks);
+}
+
 /** 启动时引导屏幕录制权限（包的同名检查，经动态导入避免 CJS 打包时静态引用 ESM）。 */
 export async function ensureScreenAccess(): Promise<boolean> {
   const { ensureScreenCaptureAccess } = await import('electron-snip');
@@ -84,22 +84,68 @@ async function exportSnip(e: SnipExportEvent): Promise<boolean | void> {
   return saved !== null;
 }
 
-// ---------------------------------------------------------------- 宿主动作
+// ---------------------------------------------------------------- 长图
 
-let ocrSeq = 0;
-
-function hostActions(): SnipAction[] {
-  return [
-    { id: 'ocr', label: '提取文字', icon: scanTextSvg, run: runOcr },
-    { id: 'scroll', label: '长图', icon: galleryVerticalSvg, run: runScroll },
-    { id: 'record', label: '录制', icon: videoSvg, run: runRecord },
-  ];
+function scrollConfig(): { preloadPath: string; rendererDir: string } {
+  return {
+    preloadPath: require.resolve('electron-snip/preload'),
+    rendererDir: path.dirname(require.resolve('electron-snip/renderer/scroll.html')),
+  };
 }
 
 /**
+ * 长图结束的去向。包已先收起长图窗口；这里先结束截图会话（恢复被隐藏的窗口），
+ * 再决定进剪贴板、存盘，或送进贴图编辑。
+ */
+const scrollHooks = {
+  async onFinish({ kind, png }: ScrollFinish): Promise<void> {
+    if (kind === 'edit') {
+      getSnipper().cancel('scroll-edit');
+      void getSnipper().pinImage(png, { editMode: true });
+      return;
+    }
+    const sourceApp = scrollSourceApp;
+    getSnipper().cancel(kind === 'copy' ? 'scroll-copy' : 'scroll-save');
+    try {
+      if (kind === 'copy') {
+        await copyPng(png, sourceApp);
+        console.log(`[scroll] 长图已复制 ${png.byteLength} 字节`);
+      } else {
+        const settings = await getSettings();
+        await savePng(null, png, defaultSnipName(settings.saveFormat), sourceApp);
+      }
+    } catch (err) {
+      console.error('[scroll] 导出失败', err);
+    }
+  },
+  onCancel(reason: string): void {
+    getSnipper().cancel(reason);
+  },
+};
+
+/** 长图最小边长：小于它滚不出重叠区域，直接不启动。 */
+const MIN_SCROLL_REGION = 64;
+
+function runScroll(ctx: SnipActionContext): void {
+  const pick = ctx.pickSingleDisplay();
+  if (!pick || pick.region.width < MIN_SCROLL_REGION || pick.region.height < MIN_SCROLL_REGION) {
+    console.warn('[scroll] 选区无法落在单块屏内，长图未启动');
+    return;
+  }
+  scrollSourceApp = ctx.sourceApp;
+  ctx.hideOverlays();
+  if (!startScrollCapture(pick.shot, pick.region, scrollConfig())) {
+    console.warn('[scroll] 启动失败（可能已在滚动中）');
+  }
+}
+
+// ---------------------------------------------------------------- OCR
+
+let ocrSeq = 0;
+
+/**
  * OCR：识别已冻结的截图，遮罩不收起。结果经通用面板显示。
- * 不用「忙」标志：识别可能卡住，裸布尔会跨会话残留（应用曾因此「时灵时不灵」）。
- * 改用序号，只认最新一次的结果。
+ * 不用「忙」标志：识别可能卡住，裸布尔会跨会话残留。改用序号，只认最新一次的结果。
  */
 async function runOcr(ctx: SnipActionContext): Promise<void> {
   const seq = ++ocrSeq;
@@ -110,7 +156,6 @@ async function runOcr(ctx: SnipActionContext): Promise<void> {
   }
   ctx.showResult({ state: 'loading' });
   try {
-    const { recognizeImagePng } = await import('./ocr');
     // cropShot 给出 RGBA；nativeImage.createFromBitmap 要 BGRA，换回来
     const frame = cropShot(pick.shot, pick.region);
     const bgra = Buffer.from(frame.pixels);
@@ -128,23 +173,9 @@ async function runOcr(ctx: SnipActionContext): Promise<void> {
   }
 }
 
-/** 长图：沿竖向滚动，只能在单块屏内；最小边长不足以滚出重叠区域，直接不启动。 */
-const MIN_SCROLL_REGION = 64;
+// ---------------------------------------------------------------- 录屏（应用内实现）
 
-function runScroll(ctx: SnipActionContext): void {
-  const pick = ctx.pickSingleDisplay();
-  if (!pick || pick.region.width < MIN_SCROLL_REGION || pick.region.height < MIN_SCROLL_REGION) {
-    console.warn('[scroll] 选区无法落在单块屏内，长图未启动');
-    return;
-  }
-  scrollSourceApp = ctx.sourceApp;
-  ctx.hideOverlays();
-  if (!startScrollCapture(pick.shot, pick.region)) {
-    console.warn('[scroll] 启动失败（可能已在滚动中）');
-  }
-}
-
-/** 录制：与长图同款，只录单屏内的选区。 */
+/** 录制：只录单屏内的选区。 */
 function runRecord(ctx: SnipActionContext): void {
   const pick = ctx.pickSingleDisplay();
   if (!pick) {
@@ -170,60 +201,12 @@ function runRecord(ctx: SnipActionContext): void {
   }
 }
 
-// ---------------------------------------------------------------- 长图控制条
+// ---------------------------------------------------------------- 动作注册
 
-/** 长图控制条（scroll.html）的动作：自动 / 手动滚动、到底、编辑、复制 / 保存 / 取消。 */
-export async function onScrollAction(_sender: WebContents, payload: ScrollActionPayload): Promise<void> {
-  switch (payload.kind) {
-    case 'start':
-      beginScrollCapture();
-      return;
-    case 'auto':
-      await startAutoScroll();
-      return;
-    case 'manual':
-      stopAutoScroll();
-      return;
-    case 'speed':
-      setAutoScrollSpeed(payload.speed ?? 'normal');
-      return;
-    case 'bottom':
-      stopAutoScroll();
-      console.log('[scroll] 已到底部，自动滚动停止');
-      return;
-    case 'edit': {
-      // 长图二次编辑：转入独立贴图并直接进入标注编辑模式
-      const png = payload.png;
-      if (!png || png.byteLength === 0) {
-        getSnipper().cancel('scroll-empty');
-        return;
-      }
-      stopScrollCapture();
-      getSnipper().cancel('scroll-edit');
-      void getSnipper().pinImage(png, { editMode: true });
-      return;
-    }
-    case 'cancel':
-      getSnipper().cancel('scroll-cancel');
-      return;
-  }
-  const png = payload.png;
-  if (!png || png.byteLength === 0) {
-    getSnipper().cancel('scroll-empty');
-    return;
-  }
-  // 先收场（滚动窗口销毁、此前隐藏的窗口恢复），再进剪贴板 / 存盘对话框
-  const sourceApp = scrollSourceApp;
-  getSnipper().cancel(payload.kind === 'copy' ? 'scroll-copy' : 'scroll-save');
-  try {
-    if (payload.kind === 'copy') {
-      await copyPng(png, sourceApp);
-      console.log(`[scroll] 长图已复制 ${png.byteLength} 字节`);
-    } else {
-      const settings = await getSettings();
-      await savePng(null, png, defaultSnipName(settings.saveFormat), sourceApp);
-    }
-  } catch (err) {
-    console.error('[scroll] 导出失败', err);
-  }
+function hostActions(): SnipAction[] {
+  return [
+    { id: 'ocr', label: '提取文字', icon: scanTextSvg, run: runOcr },
+    { id: 'scroll', label: '长图', icon: galleryVerticalSvg, run: runScroll },
+    { id: 'record', label: '录制', icon: videoSvg, run: runRecord },
+  ];
 }
